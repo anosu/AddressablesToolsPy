@@ -6,6 +6,10 @@ Python copy of AddressablesTools
 
 ### Usage
 
+```shell
+pip install addressablestools
+```
+
 ```python
 from pathlib import Path
 from AddressablesTools import parse
