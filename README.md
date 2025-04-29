@@ -2,6 +2,8 @@
 
 Python copy of AddressablesTools
 
+**Only reading is implemented**
+
 ### Usage
 
 ```python
