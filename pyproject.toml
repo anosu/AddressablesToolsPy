@@ -1,0 +1,18 @@
+[project]
+name = "addressablestools"
+version = "0.1.0"
+authors = [{ name = "Jitsu", email = "jitsu233@gmail.com" }]
+description = "Python copy of AddressablesTools"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+dependencies = []
+
+[project.urls]
+"Homepage" = "https://github.com/anosu/AddressablesToolsPy"
+"Bug Reports" = "https://github.com/anosu/AddressablesToolsPy/issues"
+"Funding" = "https://donate.pypi.org"
+"Source" = "https://github.com/anosu/AddressablesToolsPy"
+
+[dependency-groups]
+dev = ["pytest>=8.3.5", "ruff>=0.11.7"]

@@ -1,0 +1,45 @@
+from ..Reader import CatalogBinaryReader
+from ..Const import uint
+
+
+class ContentCatalogDataBinaryHeader:
+    Magic: int
+    Version: int
+    KeysOffset: int
+    IdOffset: int
+    InstanceProviderOffset: int
+    SceneProviderOffset: int
+    InitObjectsArrayOffset: int
+    BuildResultHashOffset: int
+
+    def __repr__(self):
+        return (
+            f"<{self.__class__.__name__}(Magic={self.Magic}, Version={self.Version})>"
+        )
+
+    def __init__(self):
+        self.Magic = 0
+        self.Version = 0
+        self.KeysOffset = 0
+        self.IdOffset = 0
+        self.InstanceProviderOffset = 0
+        self.SceneProviderOffset = 0
+        self.InitObjectsArrayOffset = 0
+        self.BuildResultHashOffset = 0
+
+    def Read(self, reader: CatalogBinaryReader):
+        self.Magic = reader.ReadInt32()
+        self.Version = reader.ReadInt32()
+        if self.Version not in [1, 2]:
+            raise Exception("Only versions 1 and 2 are supported")
+        reader.Version = self.Version
+
+        self.KeysOffset = reader.ReadUInt32()
+        self.IdOffset = reader.ReadUInt32()
+        self.InstanceProviderOffset = reader.ReadUInt32()
+        self.SceneProviderOffset = reader.ReadUInt32()
+        self.InitObjectsArrayOffset = reader.ReadUInt32()
+        if self.Version == 1 and self.KeysOffset == 0x20:
+            self.BuildResultHashOffset = uint.MaxValue
+        else:
+            self.BuildResultHashOffset = reader.ReadUInt32()
