@@ -1,9 +1,10 @@
 from enum import Enum
+from struct import unpack
 
 from .ClassJsonObject import ClassJsonObject
 from .SerializedType import SerializedType
 from .WrappedSerializedObject import WrappedSerializedObject
-from ..Const import uint
+from ..constants import uint
 from ..Classes.AssetBundleRequestOptions import AssetBundleRequestOptions
 from ..Classes.Hash128 import Hash128
 from ..Classes.TypeReference import TypeReference
@@ -65,9 +66,9 @@ class SerializedObjectDecoder:
                 matchName = jsonObj.Type.GetMatchName()
                 match matchName:
                     case SerializedObjectDecoder.ABRO_MATCHNAME:
-                        obj = AssetBundleRequestOptions()
-                        obj.ReadJson(jsonText)
-                        return WrappedSerializedObject(jsonObj.Type, obj)
+                        return WrappedSerializedObject(
+                            jsonObj.Type, AssetBundleRequestOptions.FromJson(jsonText)
+                        )
                 return jsonObj
             case _:
                 return None
@@ -77,59 +78,51 @@ class SerializedObjectDecoder:
         if offset == uint.MaxValue:
             return None
 
-        reader.BaseStream.seek(offset)
+        reader.Seek(offset)
         typeNameOffset = reader.ReadUInt32()
         objectOffset = reader.ReadUInt32()
 
         isDefaultObject = objectOffset == uint.MaxValue
 
-        serializedType = SerializedType()
-        serializedType.ReadBinary(reader, typeNameOffset)
+        serializedType = SerializedType.FromBinary(reader, typeNameOffset)
         matchName = serializedType.GetMatchName()
         match matchName:
             case SerializedObjectDecoder.INT_MATCHNAME:
                 if isDefaultObject:
                     return 0
-                reader.BaseStream.seek(objectOffset)
+                reader.Seek(objectOffset)
                 return reader.ReadInt32()
             case SerializedObjectDecoder.LONG_MATCHNAME:
                 if isDefaultObject:
                     return 0
-                reader.BaseStream.seek(objectOffset)
+                reader.Seek(objectOffset)
                 return reader.ReadInt64()
             case SerializedObjectDecoder.BOOL_MATCHNAME:
                 if isDefaultObject:
                     return False
-                reader.BaseStream.seek(objectOffset)
+                reader.Seek(objectOffset)
                 return reader.ReadBoolean()
             case SerializedObjectDecoder.STRING_MATCHNAME | "0; System.String":
                 if isDefaultObject:
                     return None
-                reader.BaseStream.seek(objectOffset)
+                reader.Seek(objectOffset)
                 stringOffset = reader.ReadUInt32()
                 seperator = reader.ReadChar()
                 return reader.ReadEncodedString(stringOffset, seperator)
             case SerializedObjectDecoder.HASH128_MATCHNAME:
                 if isDefaultObject:
                     return None
-                reader.BaseStream.seek(objectOffset)
-                v0 = reader.ReadUInt32()
-                v1 = reader.ReadUInt32()
-                v2 = reader.ReadUInt32()
-                v3 = reader.ReadUInt32()
-                return Hash128(v0, v1, v2, v3)
+                reader.Seek(objectOffset)
+                return Hash128(*unpack("<4I", reader.ReadBytes(16)))
             case (
                 SerializedObjectDecoder.ABRO_MATCHNAME
                 | "0; AssetBundleRequestOptions.ResourceProviders.ResourceManagement.UnityEngine"
             ):
                 if isDefaultObject:
                     return None
-                obj: AssetBundleRequestOptions = reader.ReadCustom(
+                obj = reader.ReadCustom(
                     objectOffset,
-                    lambda: (x := AssetBundleRequestOptions()).ReadBinary(
-                        reader, objectOffset
-                    )
-                    or x,
+                    lambda: AssetBundleRequestOptions.FromBinary(reader, objectOffset),
                 )
                 return WrappedSerializedObject(serializedType, obj)
             case _:

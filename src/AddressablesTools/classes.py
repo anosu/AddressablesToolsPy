@@ -1,4 +1,3 @@
-from .CatalogFileType import CatalogFileType
 from .Catalog.WrappedSerializedObject import WrappedSerializedObject
 from .Catalog.ContentCatalogData import ContentCatalogData
 from .Catalog.ClassJsonObject import ClassJsonObject
@@ -10,7 +9,6 @@ from .Classes.Hash128 import Hash128
 from .Classes.AssetBundleRequestOptions import AssetBundleRequestOptions
 
 __all__ = [
-    "CatalogFileType",
     "WrappedSerializedObject",
     "ContentCatalogData",
     "ClassJsonObject",

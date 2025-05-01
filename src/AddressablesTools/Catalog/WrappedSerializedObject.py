@@ -6,6 +6,8 @@ T = TypeVar("T")
 
 
 class WrappedSerializedObject(Generic[T]):
+    __slots__ = ("Type", "Object")
+
     Type: SerializedType
     Object: T
 

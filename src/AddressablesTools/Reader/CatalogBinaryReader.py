@@ -1,7 +1,8 @@
 from io import BytesIO
+from struct import unpack
 from typing import TypeVar, Type, Callable
 
-from ..Const import uint
+from ..constants import uint
 from .BinaryReader import BinaryReader
 
 T = TypeVar("T")
@@ -23,8 +24,8 @@ class CatalogBinaryReader(BinaryReader):
     def TryGetCachedObject(self, offset: int, objType: Type[T]) -> T | None:
         return self._objCache.get(offset, None)
 
-    def __ReadBasicString(self, offset: int, unicode: bool) -> str:
-        self.BaseStream.seek(offset - 4)
+    def _ReadBasicString(self, offset: int, unicode: bool) -> str:
+        self.Seek(offset - 4)
         length = self.ReadInt32()
         data = self.ReadBytes(length)
         if unicode:
@@ -32,8 +33,8 @@ class CatalogBinaryReader(BinaryReader):
             return data.decode("utf-16-le")
         return data.decode("ascii")
 
-    def __ReadDynamicString(self, offset: int, unicode: bool, sep: str) -> str:
-        self.BaseStream.seek(offset)
+    def _ReadDynamicString(self, offset: int, unicode: bool, sep: str) -> str:
+        self.Seek(offset)
         partStrs: list[str] = []
         while True:
             partStringOffset = self.ReadUInt32()
@@ -41,7 +42,7 @@ class CatalogBinaryReader(BinaryReader):
             partStrs.append(self.ReadEncodedString(partStringOffset))
             if nextPartOffset == uint.MaxValue:
                 break
-            self.BaseStream.seek(nextPartOffset)
+            self.Seek(nextPartOffset)
         if len(partStrs) == 1:
             return partStrs[0]
         if self.Version > 1:
@@ -61,9 +62,9 @@ class CatalogBinaryReader(BinaryReader):
         offset = encodedOffset & 0x3FFFFFFF
 
         if not dynamicString:
-            return self.CacheAndReturn(offset, self.__ReadBasicString(offset, unicode))
+            return self.CacheAndReturn(offset, self._ReadBasicString(offset, unicode))
         return self.CacheAndReturn(
-            offset, self.__ReadDynamicString(offset, unicode, dynstrSep)
+            offset, self._ReadDynamicString(offset, unicode, dynstrSep)
         )
 
     def ReadOffsetArray(self, encodedOffset: int) -> list[int]:
@@ -72,14 +73,14 @@ class CatalogBinaryReader(BinaryReader):
         if (cachedArr := self.TryGetCachedObject(encodedOffset, list[int])) is not None:
             return cachedArr
 
-        self.BaseStream.seek(encodedOffset - 4)
+        self.Seek(encodedOffset - 4)
         byteSize = self.ReadInt32()
-        assert byteSize % 4 == 0
-        # if byteSize % 4 != 0:
-        #     raise Exception('Array size must be a multiple of 4')
-        elemCount = byteSize // 4
+        if byteSize % 4 != 0:
+            raise Exception("Array size must be a multiple of 4")
         return self.CacheAndReturn(
-            encodedOffset, [self.ReadUInt32() for _ in range(elemCount)]
+            encodedOffset,
+            list(unpack(f"<{byteSize // 4}I", self.ReadBytes(byteSize))),
+            # encodedOffset, [self.ReadUInt32() for _ in range(elemCount)]
         )
 
     def ReadCustom(self, offset: int, fetchFunc: Callable[[], T]) -> T:

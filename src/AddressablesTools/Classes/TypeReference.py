@@ -1,4 +1,6 @@
 class TypeReference:
+    __slots__ = ["Clsid"]
+
     Clsid: str
 
     def __repr__(self):

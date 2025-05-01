@@ -11,6 +11,18 @@ from ..Catalog.WrappedSerializedObject import WrappedSerializedObject
 
 
 class ResourceLocation:
+    __slots__ = (
+        "InternalId",
+        "ProviderId",
+        "DependencyKey",
+        "Dependencies",
+        "Data",
+        "HashCode",
+        "DependencyHashCode",
+        "PrimaryKey",
+        "Type",
+    )
+
     InternalId: str | None
     ProviderId: str | None
     DependencyKey: object
@@ -29,6 +41,12 @@ class ResourceLocation:
     DependencyHashCode: int
     PrimaryKey: str | None
     Type: SerializedType | None
+
+    @classmethod
+    def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
+        obj = cls()
+        obj.ReadBinary(reader, offset)
+        return obj
 
     def __repr__(self):
         return (
@@ -86,7 +104,7 @@ class ResourceLocation:
         self.Type = resourceType
 
     def ReadBinary(self, reader: CatalogBinaryReader, offset: int):
-        reader.BaseStream.seek(offset)
+        reader.Seek(offset)
         primaryKeyOffset = reader.ReadUInt32()
         internalIdOffset = reader.ReadUInt32()
         providerIdOffset = reader.ReadUInt32()
@@ -101,11 +119,10 @@ class ResourceLocation:
 
         dependenciesOffsets = reader.ReadOffsetArray(dependenciesOffset)
         dependencies: list[ResourceLocation] = []
-        for i in range(len(dependenciesOffsets)):
-            objectOffset = dependenciesOffsets[i]
+        for objectOffset in dependenciesOffsets:
             dependencyLocation = reader.ReadCustom(
                 objectOffset,
-                lambda: (x := ResourceLocation()).ReadBinary(reader, objectOffset) or x,
+                lambda: ResourceLocation.FromBinary(reader, objectOffset),
             )
             dependencies.append(dependencyLocation)
 
@@ -114,8 +131,7 @@ class ResourceLocation:
 
         self.DependencyHashCode = dependencyHashCode
         self.Data = SerializedObjectDecoder.DecodeV2(reader, dataOffset)
-        self.Type = SerializedType()
-        self.Type.ReadBinary(reader, typeOffset)
+        self.Type = SerializedType.FromBinary(reader, typeOffset)
 
 
 __all__ = ["ResourceLocation"]

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import AddressablesTools
-from AddressablesTools.classes import AssetBundleRequestOptions
+from AddressablesTools.classes import ContentCatalogData, AssetBundleRequestOptions
 
 
 json_file = Path("tests/samples/catalog.json")
@@ -10,7 +10,7 @@ binary_file = Path("tests/samples/catalog.bin")
 
 def test_parse():
     catalog = AddressablesTools.parse(json_file.read_text("utf-8"))
-    assert isinstance(catalog, AddressablesTools.ContentCatalogData)
+    assert isinstance(catalog, ContentCatalogData)
     for key, locs in catalog.Resources.items():
         if not isinstance(key, str):
             continue

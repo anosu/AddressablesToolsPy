@@ -3,24 +3,40 @@ from ..JSON.SerializedTypeJson import SerializedTypeJson
 
 
 class SerializedType:
+    __slots__ = ("AssemblyName", "ClassName")
+
     AssemblyName: str | None
     ClassName: str | None
+
+    @classmethod
+    def FromJson(cls, type: SerializedTypeJson):
+        return cls(type.m_AssemblyName, type.m_ClassName)
+
+    @classmethod
+    def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
+        reader.Seek(offset)
+        assemblyNameOffset = reader.ReadUInt32()
+        classNameOffset = reader.ReadUInt32()
+        return cls(
+            reader.ReadEncodedString(assemblyNameOffset, "."),
+            reader.ReadEncodedString(classNameOffset, "."),
+        )
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(AssemblyName={self.AssemblyName}, ClassName={self.ClassName})>"
 
-    def __init__(self):
-        self.AssemblyName = None
-        self.ClassName = None
+    def __init__(self, assemblyName: str | None = None, className: str | None = None):
+        self.AssemblyName = assemblyName
+        self.ClassName = className
 
-    def Equals(self, obj: object):
+    def __eq__(self, obj: object):
         return (
             isinstance(obj, SerializedType)
             and obj.AssemblyName == self.AssemblyName
             and obj.ClassName == self.ClassName
         )
 
-    def GetHashCode(self):
+    def __hash__(self):
         return hash((self.AssemblyName, self.ClassName))
 
     def ReadJson(self, type: SerializedTypeJson):
@@ -28,7 +44,7 @@ class SerializedType:
         self.ClassName = type.m_ClassName
 
     def ReadBinary(self, reader: CatalogBinaryReader, offset: int):
-        reader.BaseStream.seek(offset)
+        reader.Seek(offset)
         assemblyNameOffset = reader.ReadUInt32()
         classNameOffset = reader.ReadUInt32()
         self.AssemblyName = reader.ReadEncodedString(assemblyNameOffset, ".")

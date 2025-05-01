@@ -1,5 +1,5 @@
-from ..Reader import CatalogBinaryReader
-from ..Const import uint
+from ..constants import uint
+from ..Reader.CatalogBinaryReader import CatalogBinaryReader
 
 
 class ContentCatalogDataBinaryHeader:
@@ -39,7 +39,8 @@ class ContentCatalogDataBinaryHeader:
         self.InstanceProviderOffset = reader.ReadUInt32()
         self.SceneProviderOffset = reader.ReadUInt32()
         self.InitObjectsArrayOffset = reader.ReadUInt32()
-        if self.Version == 1 and self.KeysOffset == 0x20:
-            self.BuildResultHashOffset = uint.MaxValue
-        else:
-            self.BuildResultHashOffset = reader.ReadUInt32()
+        self.BuildResultHashOffset = (
+            uint.MaxValue
+            if self.Version == 1 and self.KeysOffset == 0x20
+            else reader.ReadUInt32()
+        )

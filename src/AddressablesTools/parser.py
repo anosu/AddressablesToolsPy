@@ -1,7 +1,6 @@
 import json
 from io import BytesIO
 
-from .CatalogFileType import CatalogFileType
 from .JSON.ContentCatalogDataJson import ContentCatalogDataJson
 from .JSON.ObjectInitializationDataJson import ObjectInitializationDataJson
 from .JSON.SerializedTypeJson import SerializedTypeJson
@@ -10,15 +9,15 @@ from .Reader.CatalogBinaryReader import CatalogBinaryReader
 
 
 def serializedTypeDecoder(obj: dict):
-    return SerializedTypeJson.New(obj["m_AssemblyName"], obj["m_ClassName"])
+    return SerializedTypeJson(obj["m_AssemblyName"], obj["m_ClassName"])
 
 
 def objectInitializationDataDecoder(obj: dict):
     _m_ObjectType = obj["m_ObjectType"]
-    m_ObjectType = SerializedTypeJson.New(
+    m_ObjectType = SerializedTypeJson(
         _m_ObjectType["m_AssemblyName"], _m_ObjectType["m_ClassName"]
     )
-    return ObjectInitializationDataJson.New(obj["m_Id"], m_ObjectType, obj["m_Data"])
+    return ObjectInitializationDataJson(obj["m_Id"], m_ObjectType, obj["m_Data"])
 
 
 def contentCatalogDataDecoder(obj: dict):
@@ -26,18 +25,18 @@ def contentCatalogDataDecoder(obj: dict):
     _m_SceneProviderData = obj["m_SceneProviderData"]
     _m_ResourceProviderData = obj["m_ResourceProviderData"]
 
-    m_InstanceProviderData = ObjectInitializationDataJson.New(
+    m_InstanceProviderData = ObjectInitializationDataJson(
         _m_InstanceProviderData["m_Id"],
-        SerializedTypeJson.New(
+        SerializedTypeJson(
             _m_InstanceProviderData["m_ObjectType"]["m_AssemblyName"],
             _m_InstanceProviderData["m_ObjectType"]["m_ClassName"],
         ),
         _m_InstanceProviderData["m_Data"],
     )
 
-    m_SceneProviderData = ObjectInitializationDataJson.New(
+    m_SceneProviderData = ObjectInitializationDataJson(
         _m_SceneProviderData["m_Id"],
-        SerializedTypeJson.New(
+        SerializedTypeJson(
             _m_SceneProviderData["m_ObjectType"]["m_AssemblyName"],
             _m_SceneProviderData["m_ObjectType"]["m_ClassName"],
         ),
@@ -45,9 +44,9 @@ def contentCatalogDataDecoder(obj: dict):
     )
 
     m_ResourceProviderData = [
-        ObjectInitializationDataJson.New(
+        ObjectInitializationDataJson(
             o["m_Id"],
-            SerializedTypeJson.New(
+            SerializedTypeJson(
                 o["m_ObjectType"]["m_AssemblyName"], o["m_ObjectType"]["m_ClassName"]
             ),
             o["m_Data"],
@@ -55,7 +54,7 @@ def contentCatalogDataDecoder(obj: dict):
         for o in _m_ResourceProviderData
     ]
 
-    return ContentCatalogDataJson.New(
+    return ContentCatalogDataJson(
         obj["m_LocatorId"],
         obj.get("m_BuildResultHash"),
         m_InstanceProviderData,
@@ -69,7 +68,7 @@ def contentCatalogDataDecoder(obj: dict):
         obj["m_ExtraDataString"],
         obj.get("m_Keys"),
         [
-            SerializedTypeJson.New(o["m_AssemblyName"], o["m_ClassName"])
+            SerializedTypeJson(o["m_AssemblyName"], o["m_ClassName"])
             for o in obj["m_resourceTypes"]
         ],
         obj.get("m_InternalIdPrefixes"),
@@ -78,27 +77,16 @@ def contentCatalogDataDecoder(obj: dict):
 
 class AddressablesCatalogFileParser:
     @staticmethod
-    def CCDJsonFromString(data: str) -> ContentCatalogDataJson:
-        return contentCatalogDataDecoder(json.loads(data))
-
-    @staticmethod
     def FromBinaryData(data: bytes) -> ContentCatalogData:
         ms = BytesIO(data)
         reader = CatalogBinaryReader(ms)
-        catalogData = ContentCatalogData()
-        catalogData.ReadBinary(reader)
-        return catalogData
+        return ContentCatalogData.FromBinary(reader)
 
     @staticmethod
     def FromJsonString(data: str) -> ContentCatalogData:
-        ccdJson = AddressablesCatalogFileParser.CCDJsonFromString(data)
-        catalogData = ContentCatalogData()
-        catalogData.ReadJson(ccdJson)
-        return catalogData
-
-    @staticmethod
-    def GetCatalogFileType() -> CatalogFileType:
-        return CatalogFileType.Null
+        data = json.loads(data)
+        ccdJson = contentCatalogDataDecoder(data)
+        return ContentCatalogData.FromJson(ccdJson)
 
 
 __all__ = ["AddressablesCatalogFileParser"]

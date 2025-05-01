@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 from enum import Enum
+from struct import unpack
 
-from ..Reader import CatalogBinaryReader
 from .Hash128 import Hash128
+from ..Reader.CatalogBinaryReader import CatalogBinaryReader
 
 
 class AssetLoadMode(Enum):
@@ -12,12 +13,29 @@ class AssetLoadMode(Enum):
     AllPackedAssetsAndDependencies = 1
 
 
+_AssetLoadMode = AssetLoadMode
+
+
 class AssetBundleRequestOptions:
+    __slots__ = ("Hash", "Crc", "ComInfo", "BundleName", "BundleSize")
+
     Hash: str | None
     Crc: int
     ComInfo: CommonInfo | None
     BundleName: str | None
     BundleSize: int
+
+    @classmethod
+    def FromJson(cls, jsonText: str):
+        obj = cls()
+        obj.ReadJson(jsonText)
+        return obj
+
+    @classmethod
+    def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
+        obj = cls()
+        obj.ReadBinary(reader, offset)
+        return obj
 
     def __repr__(self):
         return (
@@ -38,6 +56,18 @@ class AssetBundleRequestOptions:
         self.BundleSize = 0
 
     class CommonInfo:
+        __slots__ = (
+            "Timeout",
+            "RedirectLimit",
+            "RetryCount",
+            "AssetLoadMode",
+            "ChunkedTransfer",
+            "UseCrcForCachedBundle",
+            "UseUnityWebRequestForLocalBundles",
+            "ClearOtherCachedVersionsWhenLoaded",
+            "Version",
+        )
+
         Timeout: int
         RedirectLimit: int
         RetryCount: int
@@ -47,7 +77,13 @@ class AssetBundleRequestOptions:
         UseUnityWebRequestForLocalBundles: bool
         ClearOtherCachedVersionsWhenLoaded: bool
 
-        Version: int
+        Version: int  # not real field
+
+        @classmethod
+        def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
+            obj = cls()
+            obj.Read(reader, offset)
+            return obj
 
         def __repr__(self):
             return (
@@ -63,8 +99,30 @@ class AssetBundleRequestOptions:
                 f")>"
             )
 
+        def __init__(
+            self,
+            timeout: int = 0,
+            redirectLimit: int = 0,
+            retryCount: int = 0,
+            assetLoadMode: AssetLoadMode = _AssetLoadMode.AllPackedAssetsAndDependencies,
+            chunkedTransfer: bool = False,
+            useCrcForCachedBundle: bool = False,
+            useUnityWebRequestForLocalBundles: bool = False,
+            clearOtherCachedVersionsWhenLoaded: bool = False,
+            version: int = 0,
+        ):
+            self.Timeout = timeout
+            self.RedirectLimit = redirectLimit
+            self.RetryCount = retryCount
+            self.AssetLoadMode = assetLoadMode
+            self.ChunkedTransfer = chunkedTransfer
+            self.UseCrcForCachedBundle = useCrcForCachedBundle
+            self.UseUnityWebRequestForLocalBundles = useUnityWebRequestForLocalBundles
+            self.ClearOtherCachedVersionsWhenLoaded = clearOtherCachedVersionsWhenLoaded
+            self.Version = version
+
         def Read(self, reader: CatalogBinaryReader, offset: int):
-            reader.BaseStream.seek(offset)
+            reader.Seek(offset)
 
             timeout = reader.ReadInt16()
             redirectLimit = reader.ReadByte()
@@ -92,6 +150,10 @@ class AssetBundleRequestOptions:
             return
         except Exception as e:
             raise e
+
+        if not jsonObj:
+            return
+
         self.Hash = jsonObj["m_Hash"]
         self.Crc = jsonObj["m_Crc"]
         self.BundleName = jsonObj["m_BundleName"]
@@ -109,46 +171,37 @@ class AssetBundleRequestOptions:
             commonInfoVersion = 2
         else:
             commonInfoVersion = 3
-        self.ComInfo = AssetBundleRequestOptions.CommonInfo()
-        self.ComInfo.Version = commonInfoVersion
-        self.ComInfo.Timeout = jsonObj["m_Timeout"]
-        self.ComInfo.ChunkedTransfer = jsonObj["m_ChunkedTransfer"]
-        self.ComInfo.RedirectLimit = jsonObj["m_RedirectLimit"]
-        self.ComInfo.RetryCount = jsonObj["m_RetryCount"]
-        self.ComInfo.AssetLoadMode = AssetLoadMode(jsonObj.get("m_AssetLoadMode", 0))
-        self.ComInfo.UseCrcForCachedBundle = jsonObj.get(
-            "m_UseCrcForCachedBundle", False
-        )
-        self.ComInfo.UseUnityWebRequestForLocalBundles = jsonObj.get(
-            "m_UseUWRForLocalBundles", False
-        )
-        self.ComInfo.ClearOtherCachedVersionsWhenLoaded = jsonObj.get(
-            "m_ClearOtherCachedVersionsWhenLoaded", False
+
+        self.ComInfo = AssetBundleRequestOptions.CommonInfo(
+            jsonObj["m_Timeout"],
+            jsonObj["m_ChunkedTransfer"],
+            jsonObj["m_RedirectLimit"],
+            jsonObj["m_RetryCount"],
+            AssetLoadMode(jsonObj.get("m_AssetLoadMode", 0)),
+            jsonObj.get("m_UseCrcForCachedBundle", False),
+            jsonObj.get("m_UseUWRForLocalBundles", False),
+            jsonObj.get("m_ClearOtherCachedVersionsWhenLoaded", False),
+            commonInfoVersion,
         )
 
     def ReadBinary(self, reader: CatalogBinaryReader, offset: int):
-        reader.BaseStream.seek(offset)
+        reader.Seek(offset)
 
-        hashOffset = reader.ReadUInt32()
-        bundleNameOffset = reader.ReadUInt32()
-        crc = reader.ReadUInt32()
-        bundleSize = reader.ReadUInt32()
-        commonInfoOffset = reader.ReadUInt32()
+        hashOffset, bundleNameOffset, crc, bundleSize, commonInfoOffset = unpack(
+            "<5I", reader.ReadBytes(20)
+        )
 
-        reader.BaseStream.seek(hashOffset)
-        hashV0 = reader.ReadUInt32()
-        hashV1 = reader.ReadUInt32()
-        hashV2 = reader.ReadUInt32()
-        hashV3 = reader.ReadUInt32()
-        self.Hash = Hash128(hashV0, hashV1, hashV2, hashV3).Value
+        reader.Seek(hashOffset)
+        self.Hash = Hash128(*unpack("<4I", reader.ReadBytes(16))).Value
 
         self.BundleName = reader.ReadEncodedString(bundleNameOffset, "_")
         self.Crc = crc
         self.BundleSize = bundleSize
 
-        commonInfo = AssetBundleRequestOptions.CommonInfo()
-        commonInfo.Version = 3
-        commonInfo.Read(reader, commonInfoOffset)
+        self.ComInfo = AssetBundleRequestOptions.CommonInfo.FromBinary(
+            reader, commonInfoOffset
+        )
+        self.ComInfo.Version = 3
 
 
 __all__ = ["AssetBundleRequestOptions"]

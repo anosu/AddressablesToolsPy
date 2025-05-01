@@ -2,7 +2,12 @@ import struct
 
 
 class Hash128:
+    __slots__ = ["Value"]
+
     Value: str
+
+    def __eq__(self, value):
+        return self.Value == value.Value
 
     def __repr__(self):
         return self.Value

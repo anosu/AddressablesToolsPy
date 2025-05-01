@@ -2,6 +2,8 @@ from .SerializedType import SerializedType
 
 
 class ClassJsonObject:
+    __slots__ = ("Type", "JsonText")
+
     Type: SerializedType
     JsonText: str | None
 
@@ -9,10 +11,8 @@ class ClassJsonObject:
         return f"<{self.__class__.__name__}(Type={self.Type})>"
 
     def __init__(self, assemblyName: str, className: str, jsonText: str):
-        self.Type = SerializedType()
-        self.Type.AssemblyName = assemblyName
-        self.Type.ClassName = className
-        self.JsonText = className
+        self.Type = SerializedType(assemblyName, className)
+        self.JsonText = jsonText
 
 
 __all__ = ["ClassJsonObject"]

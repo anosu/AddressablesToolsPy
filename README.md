@@ -1,6 +1,6 @@
 # AddressablesToolsPy
 
-Python copy of AddressablesTools
+Python copy of [AddressablesTools](https://github.com/nesrak1/AddressablesTools)
 
 **Only reading is implemented**
 

@@ -1,10 +1,9 @@
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
-from .classes import ContentCatalogData
-from .AddressablesCatalogFileParser import AddressablesCatalogFileParser as Parser
+from .parser import AddressablesCatalogFileParser as Parser
 
 
-def parse(data: str | bytes) -> ContentCatalogData:
+def parse(data: str | bytes):
     return (
         Parser.FromJsonString(data)
         if isinstance(data, str)
@@ -12,11 +11,11 @@ def parse(data: str | bytes) -> ContentCatalogData:
     )
 
 
-def parse_json(data: str) -> ContentCatalogData:
+def parse_json(data: str):
     return Parser.FromJsonString(data)
 
 
-def parse_binary(data: bytes) -> ContentCatalogData:
+def parse_binary(data: bytes):
     return Parser.FromBinaryData(data)
 
 
