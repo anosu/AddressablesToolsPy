@@ -50,7 +50,7 @@ class ResourceLocation:
 
     def __repr__(self):
         return (
-            f"<{self.__class__.__name__}("
+            f"{self.__class__.__name__}("
             f"InternalId={self.InternalId}, "
             f"ProviderId={self.ProviderId}, "
             f"DependencyKey={self.DependencyKey}, "
@@ -60,7 +60,7 @@ class ResourceLocation:
             f"DependencyHashCode={self.DependencyHashCode}, "
             f"PrimaryKey={self.PrimaryKey}, "
             f"Type={self.Type}"
-            f")>"
+            f")"
         )
 
     def __init__(self):
@@ -131,7 +131,10 @@ class ResourceLocation:
 
         self.DependencyHashCode = dependencyHashCode
         self.Data = SerializedObjectDecoder.DecodeV2(reader, dataOffset)
-        self.Type = SerializedType.FromBinary(reader, typeOffset)
+        # self.Type = SerializedType.FromBinary(reader, typeOffset)
+        self.Type = reader.ReadCustom(
+            typeOffset, lambda: SerializedType.FromBinary(reader, typeOffset)
+        )
 
 
 __all__ = ["ResourceLocation"]

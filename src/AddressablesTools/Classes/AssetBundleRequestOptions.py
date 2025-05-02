@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
+import orjson as json
 from enum import Enum
-from struct import unpack
 
 from .Hash128 import Hash128
 from ..Reader.CatalogBinaryReader import CatalogBinaryReader
@@ -39,13 +38,13 @@ class AssetBundleRequestOptions:
 
     def __repr__(self):
         return (
-            f"<{self.__class__.__name__}("
+            f"{self.__class__.__name__}("
             f"Hash={self.Hash}, "
             f"Crc={self.Crc}, "
             f"ComInfo={self.ComInfo}, "
             f"BundleName={self.BundleName}, "
             f"BundleSize={self.BundleSize}"
-            f")>"
+            f")"
         )
 
     def __init__(self):
@@ -87,7 +86,7 @@ class AssetBundleRequestOptions:
 
         def __repr__(self):
             return (
-                f"<{self.__class__.__name__}("
+                f"{self.__class__.__name__}("
                 f"Timeout={self.Timeout}, "
                 f"RedirectLimit={self.RedirectLimit}, "
                 f"RetryCount={self.RetryCount}, "
@@ -96,7 +95,7 @@ class AssetBundleRequestOptions:
                 f"UseCrcForCachedBundle={self.UseCrcForCachedBundle}, "
                 f"UseUnityWebRequestForLocalBundles={self.UseUnityWebRequestForLocalBundles}, "
                 f"ClearOtherCachedVersionsWhenLoaded={self.ClearOtherCachedVersionsWhenLoaded}"
-                f")>"
+                f")"
             )
 
         def __init__(
@@ -187,12 +186,14 @@ class AssetBundleRequestOptions:
     def ReadBinary(self, reader: CatalogBinaryReader, offset: int):
         reader.Seek(offset)
 
-        hashOffset, bundleNameOffset, crc, bundleSize, commonInfoOffset = unpack(
-            "<5I", reader.ReadBytes(20)
-        )
+        hashOffset = reader.ReadUInt32()
+        bundleNameOffset = reader.ReadUInt32()
+        crc = reader.ReadUInt32()
+        bundleSize = reader.ReadUInt32()
+        commonInfoOffset = reader.ReadUInt32()
 
         reader.Seek(hashOffset)
-        self.Hash = Hash128(*unpack("<4I", reader.ReadBytes(16))).Value
+        self.Hash = Hash128(*reader.Read4UInt32()).Value
 
         self.BundleName = reader.ReadEncodedString(bundleNameOffset, "_")
         self.Crc = crc

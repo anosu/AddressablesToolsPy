@@ -1,5 +1,4 @@
 from enum import Enum
-from struct import unpack
 
 from .ClassJsonObject import ClassJsonObject
 from .SerializedType import SerializedType
@@ -84,7 +83,10 @@ class SerializedObjectDecoder:
 
         isDefaultObject = objectOffset == uint.MaxValue
 
-        serializedType = SerializedType.FromBinary(reader, typeNameOffset)
+        # serializedType = SerializedType.FromBinary(reader, typeNameOffset)
+        serializedType = reader.ReadCustom(
+            typeNameOffset, lambda: SerializedType.FromBinary(reader, typeNameOffset)
+        )
         matchName = serializedType.GetMatchName()
         match matchName:
             case SerializedObjectDecoder.INT_MATCHNAME:
@@ -113,7 +115,7 @@ class SerializedObjectDecoder:
                 if isDefaultObject:
                     return None
                 reader.Seek(objectOffset)
-                return Hash128(*unpack("<4I", reader.ReadBytes(16)))
+                return Hash128(*reader.Read4UInt32())
             case (
                 SerializedObjectDecoder.ABRO_MATCHNAME
                 | "0; AssetBundleRequestOptions.ResourceProviders.ResourceManagement.UnityEngine"

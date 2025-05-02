@@ -10,7 +10,7 @@ class Hash128:
         return self.Value == value.Value
 
     def __repr__(self):
-        return self.Value
+        return f"{self.__class__.__name__}(Value={self.Value})"
 
     def __init__(self, *values):
         self.Value = (

@@ -1,5 +1,4 @@
 from io import BytesIO
-from struct import unpack
 from base64 import b64decode
 
 from .ObjectInitializationData import ObjectInitializationData
@@ -39,7 +38,7 @@ class ContentCatalogData:
         entries: list[int]
 
         def __repr__(self):
-            return f"<{self.__class__.__name__}>"
+            return f"{self.__class__.__name__}(offset={self.offset}, entries={self.entries})"
 
         def __init__(self, offset: int, entries: list[int]):
             self.offset = offset
@@ -58,7 +57,21 @@ class ContentCatalogData:
         return ccd
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}(LocatorId={self.LocatorId}, BuildResultHash={self.BuildResultHash})>"
+        return (
+            f"{self.__class__.__name__}("
+            f"LocatorId={self.LocatorId}, "
+            f"BuildResultHash={self.BuildResultHash}, "
+            f"InstanceProviderData={self.InstanceProviderData}, "
+            f"SceneProviderData={self.SceneProviderData}, "
+            f"ResourceProviderData={self.ResourceProviderData}, "
+            f"ProviderIds={self.ProviderIds}, "
+            f"InternalIds={self.InternalIds}, "
+            f"Keys={self.Keys}, "
+            f"ResourceTypes={self.ResourceTypes}, "
+            f"InternalIdPrefixes={self.InternalIdPrefixes}, "
+            f"Resources={self.Resources}"
+            f")"
+        )
 
     def __init__(self):
         self.Version = 0
@@ -143,9 +156,7 @@ class ContentCatalogData:
         for i in range(bucketCount):
             offset = bucketReader.ReadInt32()
             entryCount = bucketReader.ReadInt32()
-            entries = list(
-                unpack(f"<{entryCount}i", bucketReader.ReadBytes(entryCount * 4))
-            )
+            entries = list(bucketReader.ReadFormat(f"<{entryCount}i"))
             buckets.append(ContentCatalogData.Bucket(offset, entries))
 
         keys: list[
@@ -172,14 +183,13 @@ class ContentCatalogData:
         extraReader = BinaryReader(extraDataStream)
         entryCount = entryReader.ReadInt32()
         for i in range(entryCount):
-            values = unpack("<7i", entryReader.ReadBytes(28))
-            internalIdIndex = values[0]
-            providerIndex = values[1]
-            dependencyKeyIndex = values[2]
-            depHash = values[3]
-            dataIndex = values[4]
-            primaryKeyIndex = values[5]
-            resourceTypeIndex = values[6]
+            internalIdIndex = entryReader.ReadInt32()
+            providerIndex = entryReader.ReadInt32()
+            dependencyKeyIndex = entryReader.ReadInt32()
+            depHash = entryReader.ReadInt32()
+            dataIndex = entryReader.ReadInt32()
+            primaryKeyIndex = entryReader.ReadInt32()
+            resourceTypeIndex = entryReader.ReadInt32()
 
             internalId = self.InternalIds[internalIdIndex]
             splitIndex = internalId.find("#")
@@ -242,7 +252,9 @@ class ContentCatalogData:
 
             locationOffsets = reader.ReadOffsetArray(locationListOffset)
             self.Resources[key] = [
-                ResourceLocation.FromBinary(reader, offset)
+                reader.ReadCustom(
+                    offset, lambda: ResourceLocation.FromBinary(reader, offset)
+                )
                 for offset in locationOffsets
             ]
 

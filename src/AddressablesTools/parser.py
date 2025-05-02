@@ -1,4 +1,4 @@
-import json
+import orjson as json
 from io import BytesIO
 
 from .JSON.ContentCatalogDataJson import ContentCatalogDataJson

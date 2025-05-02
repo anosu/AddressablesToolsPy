@@ -14,7 +14,16 @@ class ContentCatalogDataBinaryHeader:
 
     def __repr__(self):
         return (
-            f"<{self.__class__.__name__}(Magic={self.Magic}, Version={self.Version})>"
+            f"{self.__class__.__name__}("
+            f"Magic={self.Magic}, "
+            f"Version={self.Version}, "
+            f"KeysOffset={self.KeysOffset}, "
+            f"IdOffset={self.IdOffset}, "
+            f"InstanceProviderOffset={self.InstanceProviderOffset}, "
+            f"SceneProviderOffset={self.SceneProviderOffset}, "
+            f"InitObjectsArrayOffset={self.InitObjectsArrayOffset}, "
+            f"BuildResultHashOffset={self.BuildResultHashOffset}"
+            f")"
         )
 
     def __init__(self):

@@ -1,5 +1,4 @@
 from io import BytesIO
-from struct import unpack
 from typing import TypeVar, Type, Callable
 
 from ..constants import uint
@@ -28,12 +27,9 @@ class CatalogBinaryReader(BinaryReader):
         self.Seek(offset - 4)
         length = self.ReadInt32()
         data = self.ReadBytes(length)
-        if unicode:
-            # return data.decode('utf-8')
-            return data.decode("utf-16-le")
-        return data.decode("ascii")
+        return data.decode("utf-16-le" if unicode else "ascii")
 
-    def _ReadDynamicString(self, offset: int, unicode: bool, sep: str) -> str:
+    def _ReadDynamicString(self, offset: int, sep: str) -> str:
         self.Seek(offset)
         partStrs: list[str] = []
         while True:
@@ -45,27 +41,27 @@ class CatalogBinaryReader(BinaryReader):
             self.Seek(nextPartOffset)
         if len(partStrs) == 1:
             return partStrs[0]
+
         if self.Version > 1:
-            return sep.join(reversed(partStrs))
+            partStrs.reverse()
         return sep.join(partStrs)
 
-    def ReadEncodedString(
-        self, encodedOffset: int, dynstrSep: str = "\0"
-    ) -> str | None:
+    def ReadEncodedString(self, encodedOffset: int, dynSep: str = "\0") -> str | None:
         if encodedOffset == uint.MaxValue:
             return None
         if (cachedStr := self.TryGetCachedObject(encodedOffset, str)) is not None:
             return cachedStr
 
         unicode = (encodedOffset & 0x80000000) != 0
-        dynamicString = (encodedOffset & 0x40000000) != 0 and dynstrSep != "\0"
+        dynamic = (encodedOffset & 0x40000000) != 0 and dynSep != "\0"
         offset = encodedOffset & 0x3FFFFFFF
 
-        if not dynamicString:
-            return self.CacheAndReturn(offset, self._ReadBasicString(offset, unicode))
-        return self.CacheAndReturn(
-            offset, self._ReadDynamicString(offset, unicode, dynstrSep)
+        result = (
+            self._ReadDynamicString(offset, dynSep)
+            if dynamic
+            else self._ReadBasicString(offset, unicode)
         )
+        return self.CacheAndReturn(encodedOffset, result)
 
     def ReadOffsetArray(self, encodedOffset: int) -> list[int]:
         if encodedOffset == uint.MaxValue:
@@ -79,9 +75,10 @@ class CatalogBinaryReader(BinaryReader):
             raise Exception("Array size must be a multiple of 4")
         return self.CacheAndReturn(
             encodedOffset,
-            list(unpack(f"<{byteSize // 4}I", self.ReadBytes(byteSize))),
-            # encodedOffset, [self.ReadUInt32() for _ in range(elemCount)]
+            list(self.ReadFormat(f"<{byteSize // 4}I")),
         )
 
     def ReadCustom(self, offset: int, fetchFunc: Callable[[], T]) -> T:
+        if offset in self._objCache:
+            return self._objCache[offset]
         return self._objCache.setdefault(offset, fetchFunc())

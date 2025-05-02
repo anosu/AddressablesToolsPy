@@ -1,5 +1,5 @@
 from io import BytesIO
-from struct import Struct
+from struct import Struct, unpack, calcsize
 
 _INT16 = Struct("<h")
 _UINT16 = Struct("<H")
@@ -8,6 +8,8 @@ _UINT32 = Struct("<I")
 _INT64 = Struct("<q")
 _UINT64 = Struct("<Q")
 _BOOL = Struct("<?")
+
+_4UINT32 = Struct("<4I")
 
 
 class BinaryReader:
@@ -51,3 +53,9 @@ class BinaryReader:
 
     def ReadChar(self) -> str:
         return self.BaseStream.read(1).decode()
+
+    def Read4UInt32(self) -> tuple:
+        return _4UINT32.unpack(self.BaseStream.read(16))
+
+    def ReadFormat(self, fmt: str) -> tuple:
+        return unpack(fmt, self.BaseStream.read(calcsize(fmt)))

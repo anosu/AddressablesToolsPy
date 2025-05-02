@@ -27,9 +27,7 @@ class ObjectInitializationData:
         )
 
     def __repr__(self):
-        return (
-            f"<{self.__class__.__name__}(Id={self.Id}, ObjectType={self.ObjectType})>"
-        )
+        return f"{self.__class__.__name__}(Id={self.Id}, ObjectType={self.ObjectType}, Data={self.Data})"
 
     def __init__(
         self,

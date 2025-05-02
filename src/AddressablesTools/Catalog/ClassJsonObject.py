@@ -8,7 +8,7 @@ class ClassJsonObject:
     JsonText: str | None
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}(Type={self.Type})>"
+        return f"{self.__class__.__name__}(Type={self.Type})"
 
     def __init__(self, assemblyName: str, className: str, jsonText: str):
         self.Type = SerializedType(assemblyName, className)

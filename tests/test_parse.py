@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 import AddressablesTools
@@ -40,3 +41,21 @@ def test_parse_json():
             loc = locs[0]
             print(key)
             assert isinstance(loc.Data.Object, AssetBundleRequestOptions)
+
+
+def test_parse_json_speed():
+    data = json_file.read_text("utf-8")
+    start = time.time()
+    for i in range(10):
+        AddressablesTools.parse_json(data)
+    total = time.time() - start
+    assert total < 0.5
+
+
+def test_parse_binary_speed():
+    data = binary_file.read_bytes()
+    start = time.time()
+    for i in range(10):
+        AddressablesTools.parse_binary(data)
+    total = time.time() - start
+    assert total < 0.04

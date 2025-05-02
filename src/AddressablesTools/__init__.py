@@ -1,4 +1,5 @@
-__version__ = "0.1.1"
+__version__ = "0.1.2"
+__doc__ = "A Python library for parsing Unity Addressables catalog files."
 
 from .parser import AddressablesCatalogFileParser as Parser
 

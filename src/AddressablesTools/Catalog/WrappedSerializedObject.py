@@ -12,7 +12,7 @@ class WrappedSerializedObject(Generic[T]):
     Object: T
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}(Type={self.Type}, Object={self.Object})>"
+        return f"{self.__class__.__name__}[{self.Object.__class__.__name__}](Type={self.Type}, Object={self.Object})"
 
     def __init__(self, type: SerializedType, obj: T):
         self.Type = type
