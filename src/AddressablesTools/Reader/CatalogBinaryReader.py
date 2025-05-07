@@ -1,8 +1,11 @@
 from io import BytesIO
-from typing import TypeVar, Type, Callable
+from typing import TypeVar, Type, Callable, Any
 
 from ..constants import uint
 from .BinaryReader import BinaryReader
+
+type Patcher = Callable[[str], str | None]
+type Handler = Callable[[CatalogBinaryReader, int, bool], Any]
 
 T = TypeVar("T")
 
@@ -11,10 +14,21 @@ class CatalogBinaryReader(BinaryReader):
     Version: int
     _objCache: dict[int, object]
 
-    def __init__(self, stream: BytesIO):
+    _patcher: Patcher
+    _handler: Handler
+
+    def __init__(
+        self,
+        stream: BytesIO,
+        patcher: Patcher | None = None,
+        handler: Handler | None = None,
+    ):
         super().__init__(stream)
         self.Version = 1
         self._objCache = {}
+
+        self._patcher = patcher if patcher else lambda s: s
+        self._handler = handler if handler else lambda reader, offset, is_default: None
 
     def CacheAndReturn(self, offset: int, obj: T) -> T:
         self._objCache[offset] = obj
@@ -47,7 +61,7 @@ class CatalogBinaryReader(BinaryReader):
         return sep.join(partStrs)
 
     def ReadEncodedString(self, encodedOffset: int, dynSep: str = "\0") -> str | None:
-        if encodedOffset == uint.MaxValue:
+        if encodedOffset == uint.MaxValue or encodedOffset == uint.MaxValue_:
             return None
         if (cachedStr := self.TryGetCachedObject(encodedOffset, str)) is not None:
             return cachedStr

@@ -248,7 +248,9 @@ class ContentCatalogData:
         for i in range(0, len(keyLocationOffsets), 2):
             keyOffset = keyLocationOffsets[i]
             locationListOffset = keyLocationOffsets[i + 1]
-            key = SerializedObjectDecoder.DecodeV2(reader, keyOffset)
+            key = SerializedObjectDecoder.DecodeV2(
+                reader, keyOffset, reader._patcher, reader._handler
+            )
 
             locationOffsets = reader.ReadOffsetArray(locationListOffset)
             self.Resources[key] = [

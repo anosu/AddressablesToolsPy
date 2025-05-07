@@ -5,7 +5,7 @@ from .JSON.ContentCatalogDataJson import ContentCatalogDataJson
 from .JSON.ObjectInitializationDataJson import ObjectInitializationDataJson
 from .JSON.SerializedTypeJson import SerializedTypeJson
 from .Catalog.ContentCatalogData import ContentCatalogData
-from .Reader.CatalogBinaryReader import CatalogBinaryReader
+from .Reader.CatalogBinaryReader import CatalogBinaryReader, Patcher, Handler
 
 
 def serializedTypeDecoder(obj: dict):
@@ -77,9 +77,11 @@ def contentCatalogDataDecoder(obj: dict):
 
 class AddressablesCatalogFileParser:
     @staticmethod
-    def FromBinaryData(data: bytes) -> ContentCatalogData:
+    def FromBinaryData(
+        data: bytes, patcher: Patcher | None = None, handler: Handler | None = None
+    ) -> ContentCatalogData:
         ms = BytesIO(data)
-        reader = CatalogBinaryReader(ms)
+        reader = CatalogBinaryReader(ms, patcher, handler)
         return ContentCatalogData.FromBinary(reader)
 
     @staticmethod

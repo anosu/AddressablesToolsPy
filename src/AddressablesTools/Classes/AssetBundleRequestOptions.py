@@ -199,8 +199,14 @@ class AssetBundleRequestOptions:
         self.Crc = crc
         self.BundleSize = bundleSize
 
-        self.ComInfo = AssetBundleRequestOptions.CommonInfo.FromBinary(
-            reader, commonInfoOffset
+        # self.ComInfo = AssetBundleRequestOptions.CommonInfo.FromBinary(
+        #     reader, commonInfoOffset
+        # )
+        self.ComInfo = reader.ReadCustom(
+            commonInfoOffset,
+            lambda: AssetBundleRequestOptions.CommonInfo.FromBinary(
+                reader, commonInfoOffset
+            ),
         )
         self.ComInfo.Version = 3
 

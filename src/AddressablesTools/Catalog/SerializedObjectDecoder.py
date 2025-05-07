@@ -8,7 +8,7 @@ from ..Classes.AssetBundleRequestOptions import AssetBundleRequestOptions
 from ..Classes.Hash128 import Hash128
 from ..Classes.TypeReference import TypeReference
 from ..Reader.BinaryReader import BinaryReader
-from ..Reader.CatalogBinaryReader import CatalogBinaryReader
+from ..Reader.CatalogBinaryReader import CatalogBinaryReader, Patcher, Handler
 
 
 class SerializedObjectDecoder:
@@ -73,7 +73,12 @@ class SerializedObjectDecoder:
                 return None
 
     @staticmethod
-    def DecodeV2(reader: CatalogBinaryReader, offset: int):
+    def DecodeV2(
+        reader: CatalogBinaryReader,
+        offset: int,
+        patcher: Patcher,
+        handler: Handler,
+    ):
         if offset == uint.MaxValue:
             return None
 
@@ -88,7 +93,7 @@ class SerializedObjectDecoder:
             typeNameOffset, lambda: SerializedType.FromBinary(reader, typeNameOffset)
         )
         matchName = serializedType.GetMatchName()
-        match matchName:
+        match patcher(matchName):
             case SerializedObjectDecoder.INT_MATCHNAME:
                 if isDefaultObject:
                     return 0
@@ -104,7 +109,7 @@ class SerializedObjectDecoder:
                     return False
                 reader.Seek(objectOffset)
                 return reader.ReadBoolean()
-            case SerializedObjectDecoder.STRING_MATCHNAME | "0; System.String":
+            case SerializedObjectDecoder.STRING_MATCHNAME:
                 if isDefaultObject:
                     return None
                 reader.Seek(objectOffset)
@@ -116,10 +121,7 @@ class SerializedObjectDecoder:
                     return None
                 reader.Seek(objectOffset)
                 return Hash128(*reader.Read4UInt32())
-            case (
-                SerializedObjectDecoder.ABRO_MATCHNAME
-                | "0; AssetBundleRequestOptions.ResourceProviders.ResourceManagement.UnityEngine"
-            ):
+            case SerializedObjectDecoder.ABRO_MATCHNAME:
                 if isDefaultObject:
                     return None
                 obj = reader.ReadCustom(
@@ -127,6 +129,8 @@ class SerializedObjectDecoder:
                     lambda: AssetBundleRequestOptions.FromBinary(reader, objectOffset),
                 )
                 return WrappedSerializedObject(serializedType, obj)
+            case None:
+                return handler(reader, objectOffset, isDefaultObject)
             case _:
                 raise Exception(f"Unsupported object type: {matchName}")
 

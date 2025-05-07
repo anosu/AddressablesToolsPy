@@ -130,7 +130,9 @@ class ResourceLocation:
         self.Dependencies = dependencies
 
         self.DependencyHashCode = dependencyHashCode
-        self.Data = SerializedObjectDecoder.DecodeV2(reader, dataOffset)
+        self.Data = SerializedObjectDecoder.DecodeV2(
+            reader, dataOffset, reader._patcher, reader._handler
+        )
         # self.Type = SerializedType.FromBinary(reader, typeOffset)
         self.Type = reader.ReadCustom(
             typeOffset, lambda: SerializedType.FromBinary(reader, typeOffset)
