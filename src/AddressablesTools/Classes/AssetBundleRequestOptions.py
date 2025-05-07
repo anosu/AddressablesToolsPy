@@ -159,13 +159,13 @@ class AssetBundleRequestOptions:
         self.BundleSize = jsonObj["m_BundleSize"]
 
         commonInfoVersion: int
-        if jsonObj["m_ChunkedTransfer"] is None:
+        if jsonObj.get("m_ChunkedTransfer") is None:
             commonInfoVersion = 1
         elif (
-            jsonObj["m_AssetLoadMode"] is None
-            and jsonObj["m_UseCrcForCachedBundles"] is None
-            and jsonObj["m_UseUWRForLocalBundles"] is None
-            and jsonObj["m_ClearOtherCachedVersionsWhenLoaded"] is None
+            jsonObj.get("m_AssetLoadMode") is None
+            and jsonObj.get("m_UseCrcForCachedBundles") is None
+            and jsonObj.get("m_UseUWRForLocalBundles") is None
+            and jsonObj.get("m_ClearOtherCachedVersionsWhenLoaded") is None
         ):
             commonInfoVersion = 2
         else:
