@@ -14,7 +14,7 @@ class Hash128:
 
     def __init__(self, *values):
         self.Value = (
-            values[0] if len(values) == 1 else struct.pack(">IIII", *values).hex()
+            values[0] if len(values) == 1 else struct.pack("<IIII", *values).hex()
         )
 
 
