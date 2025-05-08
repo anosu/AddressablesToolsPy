@@ -80,7 +80,7 @@ from AddressablesTools.classes import SerializedObjectDecoder
 
 def patcher(matchName: str) -> str:
     # just try to parse custom AssetBundleRequestOptions in default way
-    if matchName == "GeePlus.GPUL.AddressablesManager; GeePlus.GPUL.AddressablesManager.ResourceProviders.EncryptedAssetBundleRequestOptions" # custom AssetBundleRequestOptions class
+    if matchName == "GeePlus.GPUL.AddressablesManager; GeePlus.GPUL.AddressablesManager.ResourceProviders.EncryptedAssetBundleRequestOptions": # custom AssetBundleRequestOptions class
         return SerializedObjectDecoder.ABRO_MATCHNAME # default matchName for AssetBundleRequestOptions
     return matchName
 
@@ -97,7 +97,7 @@ from AddressablesTools.classes import CatalogBinaryReader
 
 
 def patcher(matchName: str) -> str:
-    if matchName == "Custom; System.Int32"
+    if matchName == "Custom; System.Int32":
         return None
     return matchName
 
