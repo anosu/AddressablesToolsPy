@@ -89,8 +89,10 @@ catalog = AddressablesTools.parse_binary(data, patcher=patcher)
 ```
 
 ```python
+from typing import Any
 from pathlib import Path
 import AddressablesTools
+from AddressablesTools.Reader.CatalogBinaryReader import CatalogBinaryReader
 
 
 def patcher(matchName: str) -> str:
