@@ -36,20 +36,20 @@ class ContentCatalogDataBinaryHeader:
         self.InitObjectsArrayOffset = 0
         self.BuildResultHashOffset = 0
 
-    def Read(self, reader: CatalogBinaryReader):
-        self.Magic = reader.ReadInt32()
-        self.Version = reader.ReadInt32()
+    def _read(self, reader: CatalogBinaryReader):
+        self.Magic = reader.read_int32()
+        self.Version = reader.read_int32()
         if self.Version not in [1, 2]:
             raise Exception("Only versions 1 and 2 are supported")
         reader.Version = self.Version
 
-        self.KeysOffset = reader.ReadUInt32()
-        self.IdOffset = reader.ReadUInt32()
-        self.InstanceProviderOffset = reader.ReadUInt32()
-        self.SceneProviderOffset = reader.ReadUInt32()
-        self.InitObjectsArrayOffset = reader.ReadUInt32()
+        self.KeysOffset = reader.read_uint32()
+        self.IdOffset = reader.read_uint32()
+        self.InstanceProviderOffset = reader.read_uint32()
+        self.SceneProviderOffset = reader.read_uint32()
+        self.InitObjectsArrayOffset = reader.read_uint32()
         self.BuildResultHashOffset = (
             uint.MaxValue
             if self.Version == 1 and self.KeysOffset == 0x20
-            else reader.ReadUInt32()
+            else reader.read_uint32()
         )

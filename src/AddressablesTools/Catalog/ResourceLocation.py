@@ -43,9 +43,9 @@ class ResourceLocation:
     Type: SerializedType | None
 
     @classmethod
-    def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
+    def _from_binary(cls, reader: CatalogBinaryReader, offset: int):
         obj = cls()
-        obj.ReadBinary(reader, offset)
+        obj._read_binary(reader, offset)
         return obj
 
     def __repr__(self):
@@ -74,7 +74,7 @@ class ResourceLocation:
         self.PrimaryKey = None
         self.Type = None
 
-    def ReadJson(
+    def _read_json(
         self,
         internalId: str | None,
         providerId: str | None,
@@ -103,26 +103,26 @@ class ResourceLocation:
         self.PrimaryKey = str(primaryKey)
         self.Type = resourceType
 
-    def ReadBinary(self, reader: CatalogBinaryReader, offset: int):
-        reader.Seek(offset)
-        primaryKeyOffset = reader.ReadUInt32()
-        internalIdOffset = reader.ReadUInt32()
-        providerIdOffset = reader.ReadUInt32()
-        dependenciesOffset = reader.ReadUInt32()
-        dependencyHashCode = reader.ReadInt32()
-        dataOffset = reader.ReadUInt32()
-        typeOffset = reader.ReadUInt32()
+    def _read_binary(self, reader: CatalogBinaryReader, offset: int):
+        reader.seek(offset)
+        primaryKeyOffset = reader.read_uint32()
+        internalIdOffset = reader.read_uint32()
+        providerIdOffset = reader.read_uint32()
+        dependenciesOffset = reader.read_uint32()
+        dependencyHashCode = reader.read_int32()
+        dataOffset = reader.read_uint32()
+        typeOffset = reader.read_uint32()
 
-        self.PrimaryKey = reader.ReadEncodedString(primaryKeyOffset, "/")
-        self.InternalId = reader.ReadEncodedString(internalIdOffset, "/")
-        self.ProviderId = reader.ReadEncodedString(providerIdOffset, ".")
+        self.PrimaryKey = reader.read_encoded_string(primaryKeyOffset, "/")
+        self.InternalId = reader.read_encoded_string(internalIdOffset, "/")
+        self.ProviderId = reader.read_encoded_string(providerIdOffset, ".")
 
-        dependenciesOffsets = reader.ReadOffsetArray(dependenciesOffset)
+        dependenciesOffsets = reader.read_offset_array(dependenciesOffset)
         dependencies: list[ResourceLocation] = []
         for objectOffset in dependenciesOffsets:
-            dependencyLocation = reader.ReadCustom(
+            dependencyLocation = reader.read_custom(
                 objectOffset,
-                lambda: ResourceLocation.FromBinary(reader, objectOffset),
+                lambda: ResourceLocation._from_binary(reader, objectOffset),
             )
             dependencies.append(dependencyLocation)
 
@@ -130,12 +130,12 @@ class ResourceLocation:
         self.Dependencies = dependencies
 
         self.DependencyHashCode = dependencyHashCode
-        self.Data = SerializedObjectDecoder.DecodeV2(
+        self.Data = SerializedObjectDecoder.decode_v2(
             reader, dataOffset, reader._patcher, reader._handler
         )
         # self.Type = SerializedType.FromBinary(reader, typeOffset)
-        self.Type = reader.ReadCustom(
-            typeOffset, lambda: SerializedType.FromBinary(reader, typeOffset)
+        self.Type = reader.read_custom(
+            typeOffset, lambda: SerializedType._from_binary(reader, typeOffset)
         )
 
 

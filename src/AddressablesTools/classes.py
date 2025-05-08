@@ -8,6 +8,7 @@ from .Catalog.SerializedObjectDecoder import SerializedObjectDecoder
 from .Classes.TypeReference import TypeReference
 from .Classes.Hash128 import Hash128
 from .Classes.AssetBundleRequestOptions import AssetBundleRequestOptions
+from .Reader.CatalogBinaryReader import CatalogBinaryReader
 
 __all__ = [
     "WrappedSerializedObject",
@@ -20,4 +21,5 @@ __all__ = [
     "Hash128",
     "AssetBundleRequestOptions",
     "SerializedObjectDecoder",
+    "CatalogBinaryReader",
 ]

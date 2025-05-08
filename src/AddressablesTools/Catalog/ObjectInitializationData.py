@@ -11,19 +11,19 @@ class ObjectInitializationData:
     Data: str | None
 
     @classmethod
-    def FromJson(cls, obj: ObjectInitializationDataJson):
-        return cls(obj.m_Id, SerializedType.FromJson(obj.m_ObjectType), obj.m_Data)
+    def _from_json(cls, obj: ObjectInitializationDataJson):
+        return cls(obj.m_Id, SerializedType._from_json(obj.m_ObjectType), obj.m_Data)
 
     @classmethod
-    def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
-        reader.Seek(offset)
-        idOffset = reader.ReadUInt32()
-        objectTypeOffset = reader.ReadUInt32()
-        dataOffset = reader.ReadUInt32()
+    def _from_binary(cls, reader: CatalogBinaryReader, offset: int):
+        reader.seek(offset)
+        idOffset = reader.read_uint32()
+        objectTypeOffset = reader.read_uint32()
+        dataOffset = reader.read_uint32()
         return cls(
-            reader.ReadEncodedString(idOffset),
-            SerializedType.FromBinary(reader, objectTypeOffset),
-            reader.ReadEncodedString(dataOffset),
+            reader.read_encoded_string(idOffset),
+            SerializedType._from_binary(reader, objectTypeOffset),
+            reader.read_encoded_string(dataOffset),
         )
 
     def __repr__(self):
@@ -39,20 +39,20 @@ class ObjectInitializationData:
         self.ObjectType = objectType
         self.Data = data
 
-    def ReadJson(self, obj: ObjectInitializationDataJson):
+    def _read_json(self, obj: ObjectInitializationDataJson):
         self.Id = obj.m_Id
-        self.ObjectType = SerializedType.FromJson(obj.m_ObjectType)
+        self.ObjectType = SerializedType._from_json(obj.m_ObjectType)
         self.Data = obj.m_Data
 
-    def ReadBinary(self, reader: CatalogBinaryReader, offset: int):
-        reader.Seek(offset)
-        idOffset = reader.ReadUInt32()
-        objectTypeOffset = reader.ReadUInt32()
-        dataOffset = reader.ReadUInt32()
+    def _read_binary(self, reader: CatalogBinaryReader, offset: int):
+        reader.seek(offset)
+        idOffset = reader.read_uint32()
+        objectTypeOffset = reader.read_uint32()
+        dataOffset = reader.read_uint32()
 
-        self.Id = reader.ReadEncodedString(idOffset)
-        self.ObjectType = SerializedType.FromBinary(reader, objectTypeOffset)
-        self.Data = reader.ReadEncodedString(dataOffset)
+        self.Id = reader.read_encoded_string(idOffset)
+        self.ObjectType = SerializedType._from_binary(reader, objectTypeOffset)
+        self.Data = reader.read_encoded_string(dataOffset)
 
 
 __all__ = ["ObjectInitializationData"]

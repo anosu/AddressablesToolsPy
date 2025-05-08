@@ -53,6 +53,7 @@ There may be some custom assemblies and classes uesd to load AssetBundles.
 In gerneral, tool will not be able to parse these objects and raise an error.
 
 For example, if you encounter an error like:
+
 ```
 Unsupported object type: 0; System.String
 ```
@@ -92,7 +93,7 @@ catalog = AddressablesTools.parse_binary(data, patcher=patcher)
 from typing import Any
 from pathlib import Path
 import AddressablesTools
-from AddressablesTools.Reader.CatalogBinaryReader import CatalogBinaryReader
+from AddressablesTools.classes import CatalogBinaryReader
 
 
 def patcher(matchName: str) -> str:
@@ -103,8 +104,8 @@ def patcher(matchName: str) -> str:
 def handler(reader: CatalogBinaryReader, offset: int, is_default: bool) -> Any:
     if is_default:
         return 0
-    reader.Seek(offset)
-    return reader.ReadInt32()
+    reader.seek(offset)
+    return reader.read_int32()
 
 data = Path("catalog.bin").read_bytes()
 

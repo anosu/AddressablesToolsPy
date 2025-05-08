@@ -9,17 +9,17 @@ class SerializedType:
     ClassName: str | None
 
     @classmethod
-    def FromJson(cls, type: SerializedTypeJson):
+    def _from_json(cls, type: SerializedTypeJson):
         return cls(type.m_AssemblyName, type.m_ClassName)
 
     @classmethod
-    def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
-        reader.Seek(offset)
-        assemblyNameOffset = reader.ReadUInt32()
-        classNameOffset = reader.ReadUInt32()
+    def _from_binary(cls, reader: CatalogBinaryReader, offset: int):
+        reader.seek(offset)
+        assemblyNameOffset = reader.read_uint32()
+        classNameOffset = reader.read_uint32()
         return cls(
-            reader.ReadEncodedString(assemblyNameOffset, "."),
-            reader.ReadEncodedString(classNameOffset, "."),
+            reader.read_encoded_string(assemblyNameOffset, "."),
+            reader.read_encoded_string(classNameOffset, "."),
         )
 
     def __repr__(self):
@@ -39,21 +39,21 @@ class SerializedType:
     def __hash__(self):
         return hash((self.AssemblyName, self.ClassName))
 
-    def ReadJson(self, type: SerializedTypeJson):
+    def _read_json(self, type: SerializedTypeJson):
         self.AssemblyName = type.m_AssemblyName
         self.ClassName = type.m_ClassName
 
-    def ReadBinary(self, reader: CatalogBinaryReader, offset: int):
-        reader.Seek(offset)
-        assemblyNameOffset = reader.ReadUInt32()
-        classNameOffset = reader.ReadUInt32()
-        self.AssemblyName = reader.ReadEncodedString(assemblyNameOffset, ".")
-        self.ClassName = reader.ReadEncodedString(classNameOffset, ".")
+    def _read_binary(self, reader: CatalogBinaryReader, offset: int):
+        reader.seek(offset)
+        assemblyNameOffset = reader.read_uint32()
+        classNameOffset = reader.read_uint32()
+        self.AssemblyName = reader.read_encoded_string(assemblyNameOffset, ".")
+        self.ClassName = reader.read_encoded_string(classNameOffset, ".")
 
-    def GetMatchName(self):
-        return self.GetAssemblyShortName() + "; " + self.ClassName
+    def get_match_name(self):
+        return self.get_assembly_short_name() + "; " + self.ClassName
 
-    def GetAssemblyShortName(self):
+    def get_assembly_short_name(self):
         if "," not in self.AssemblyName:
             raise Exception("AssemblyName must have commas")
         return self.AssemblyName.split(",")[0]

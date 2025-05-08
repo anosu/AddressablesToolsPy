@@ -18,44 +18,44 @@ class BinaryReader:
     def __init__(self, stream: BytesIO):
         self.BaseStream = stream
 
-    def Seek(self, pos: int, whence: int = 0):
+    def seek(self, pos: int, whence: int = 0):
         self.BaseStream.seek(pos, whence)
 
-    def Tell(self) -> int:
+    def tell(self) -> int:
         return self.BaseStream.tell()
 
-    def ReadByte(self) -> int:
+    def read_byte(self) -> int:
         return self.BaseStream.read(1)[0]
 
-    def ReadBytes(self, count: int) -> bytes:
+    def read_bytes(self, count: int) -> bytes:
         return self.BaseStream.read(count)
 
-    def ReadInt16(self) -> int:
+    def read_int16(self) -> int:
         return _INT16.unpack(self.BaseStream.read(2))[0]
 
-    def ReadUInt16(self) -> int:
+    def read_uint16(self) -> int:
         return _UINT16.unpack(self.BaseStream.read(2))[0]
 
-    def ReadInt32(self) -> int:
+    def read_int32(self) -> int:
         return _INT32.unpack(self.BaseStream.read(4))[0]
 
-    def ReadUInt32(self) -> int:
+    def read_uint32(self) -> int:
         return _UINT32.unpack(self.BaseStream.read(4))[0]
 
-    def ReadInt64(self) -> int:
+    def read_int64(self) -> int:
         return _INT64.unpack(self.BaseStream.read(8))[0]
 
-    def ReadUInt64(self) -> int:
+    def read_uint64(self) -> int:
         return _UINT64.unpack(self.BaseStream.read(8))[0]
 
-    def ReadBoolean(self) -> bool:
+    def read_boolean(self) -> bool:
         return _BOOL.unpack(self.BaseStream.read(1))[0]
 
-    def ReadChar(self) -> str:
+    def read_char(self) -> str:
         return self.BaseStream.read(1).decode()
 
-    def Read4UInt32(self) -> tuple:
+    def read_4uint32(self) -> tuple:
         return _4UINT32.unpack(self.BaseStream.read(16))
 
-    def ReadFormat(self, fmt: str) -> tuple:
+    def read_format(self, fmt: str) -> tuple:
         return unpack(fmt, self.BaseStream.read(calcsize(fmt)))

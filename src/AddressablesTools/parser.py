@@ -77,18 +77,18 @@ def contentCatalogDataDecoder(obj: dict):
 
 class AddressablesCatalogFileParser:
     @staticmethod
-    def FromBinaryData(
+    def from_binary(
         data: bytes, patcher: Patcher | None = None, handler: Handler | None = None
     ) -> ContentCatalogData:
         ms = BytesIO(data)
         reader = CatalogBinaryReader(ms, patcher, handler)
-        return ContentCatalogData.FromBinary(reader)
+        return ContentCatalogData._from_binary(reader)
 
     @staticmethod
-    def FromJsonString(data: str) -> ContentCatalogData:
+    def from_json(data: str) -> ContentCatalogData:
         data = json.loads(data)
         ccdJson = contentCatalogDataDecoder(data)
-        return ContentCatalogData.FromJson(ccdJson)
+        return ContentCatalogData._from_json(ccdJson)
 
 
 __all__ = ["AddressablesCatalogFileParser"]

@@ -45,15 +45,15 @@ class ContentCatalogData:
             self.entries = entries
 
     @classmethod
-    def FromJson(cls, data: ContentCatalogDataJson):
+    def _from_json(cls, data: ContentCatalogDataJson):
         ccd = cls()
-        ccd.ReadJson(data)
+        ccd._ReadJson(data)
         return ccd
 
     @classmethod
-    def FromBinary(cls, reader: CatalogBinaryReader):
+    def _from_binary(cls, reader: CatalogBinaryReader):
         ccd = cls()
-        ccd.ReadBinary(reader)
+        ccd._read_binary(reader)
         return ccd
 
     def __repr__(self):
@@ -87,20 +87,20 @@ class ContentCatalogData:
         self.InternalIdPrefixes = None
         self.Resources = None
 
-    def ReadJson(self, data: ContentCatalogDataJson):
+    def _ReadJson(self, data: ContentCatalogDataJson):
         self.LocatorId = data.m_LocatorId
         self.BuildResultHash = data.m_BuildResultHash
 
-        self.InstanceProviderData = ObjectInitializationData.FromJson(
+        self.InstanceProviderData = ObjectInitializationData._from_json(
             data.m_InstanceProviderData
         )
 
-        self.SceneProviderData = ObjectInitializationData.FromJson(
+        self.SceneProviderData = ObjectInitializationData._from_json(
             data.m_SceneProviderData
         )
 
         self.ResourceProviderData = [
-            ObjectInitializationData.FromJson(data)
+            ObjectInitializationData._from_json(data)
             for data in data.m_ResourceProviderData
         ]
 
@@ -109,7 +109,7 @@ class ContentCatalogData:
         self.Keys = list(data.m_Keys) if data.m_Keys is not None else None
 
         self.ResourceTypes = [
-            SerializedType.FromJson(type) for type in data.m_resourceTypes
+            SerializedType._from_json(type) for type in data.m_resourceTypes
         ]
 
         self.InternalIdPrefixes = (
@@ -118,45 +118,45 @@ class ContentCatalogData:
             else None
         )
 
-        self.ReadResourcesJson(data)
+        self._read_resources_json(data)
 
-    def ReadBinary(self, reader: CatalogBinaryReader):
+    def _read_binary(self, reader: CatalogBinaryReader):
         header = ContentCatalogDataBinaryHeader()
-        header.Read(reader)
+        header._read(reader)
 
         self.Version = reader.Version
 
-        self.LocatorId = reader.ReadEncodedString(header.IdOffset)
-        self.BuildResultHash = reader.ReadEncodedString(header.BuildResultHashOffset)
+        self.LocatorId = reader.read_encoded_string(header.IdOffset)
+        self.BuildResultHash = reader.read_encoded_string(header.BuildResultHashOffset)
 
-        self.InstanceProviderData = ObjectInitializationData.FromBinary(
+        self.InstanceProviderData = ObjectInitializationData._from_binary(
             reader, header.InstanceProviderOffset
         )
 
-        self.SceneProviderData = ObjectInitializationData.FromBinary(
+        self.SceneProviderData = ObjectInitializationData._from_binary(
             reader, header.SceneProviderOffset
         )
 
-        resourceProviderDataOffsets = reader.ReadOffsetArray(
+        resourceProviderDataOffsets = reader.read_offset_array(
             header.InitObjectsArrayOffset
         )
         self.ResourceProviderData = [
-            ObjectInitializationData.FromBinary(reader, offset)
+            ObjectInitializationData._from_binary(reader, offset)
             for offset in resourceProviderDataOffsets
         ]
 
-        self.ReadResourcesBinary(reader, header)
+        self._read_resources_binary(reader, header)
 
-    def ReadResourcesJson(self, data: ContentCatalogDataJson):
+    def _read_resources_json(self, data: ContentCatalogDataJson):
         buckets: list[ContentCatalogData.Bucket] = []
 
         bucketStream = BytesIO(b64decode(data.m_BucketDataString))
         bucketReader = BinaryReader(bucketStream)
-        bucketCount = bucketReader.ReadInt32()
+        bucketCount = bucketReader.read_int32()
         for i in range(bucketCount):
-            offset = bucketReader.ReadInt32()
-            entryCount = bucketReader.ReadInt32()
-            entries = list(bucketReader.ReadFormat(f"<{entryCount}i"))
+            offset = bucketReader.read_int32()
+            entryCount = bucketReader.read_int32()
+            entries = list(bucketReader.read_format(f"<{entryCount}i"))
             buckets.append(ContentCatalogData.Bucket(offset, entries))
 
         keys: list[
@@ -170,10 +170,10 @@ class ContentCatalogData:
 
         keyDataStream = BytesIO(b64decode(data.m_KeyDataString))
         keyReader = BinaryReader(keyDataStream)
-        keyCount = keyReader.ReadInt32()
+        keyCount = keyReader.read_int32()
         for i in range(keyCount):
             keyDataStream.seek(buckets[i].offset)
-            keys.append(SerializedObjectDecoder.DecodeV1(keyReader))
+            keys.append(SerializedObjectDecoder.decode_v1(keyReader))
 
         locations: list[ResourceLocation] = []
 
@@ -181,15 +181,15 @@ class ContentCatalogData:
         extraDataStream = BytesIO(b64decode(data.m_ExtraDataString))
         entryReader = BinaryReader(entryDataStream)
         extraReader = BinaryReader(extraDataStream)
-        entryCount = entryReader.ReadInt32()
+        entryCount = entryReader.read_int32()
         for i in range(entryCount):
-            internalIdIndex = entryReader.ReadInt32()
-            providerIndex = entryReader.ReadInt32()
-            dependencyKeyIndex = entryReader.ReadInt32()
-            depHash = entryReader.ReadInt32()
-            dataIndex = entryReader.ReadInt32()
-            primaryKeyIndex = entryReader.ReadInt32()
-            resourceTypeIndex = entryReader.ReadInt32()
+            internalIdIndex = entryReader.read_int32()
+            providerIndex = entryReader.read_int32()
+            dependencyKeyIndex = entryReader.read_int32()
+            depHash = entryReader.read_int32()
+            dataIndex = entryReader.read_int32()
+            primaryKeyIndex = entryReader.read_int32()
+            resourceTypeIndex = entryReader.read_int32()
 
             internalId = self.InternalIds[internalIdIndex]
             splitIndex = internalId.find("#")
@@ -211,7 +211,7 @@ class ContentCatalogData:
 
             if dataIndex >= 0:
                 extraDataStream.seek(dataIndex)
-                objData = SerializedObjectDecoder.DecodeV1(extraReader)
+                objData = SerializedObjectDecoder.decode_v1(extraReader)
             else:
                 objData = None
 
@@ -224,7 +224,7 @@ class ContentCatalogData:
             resourceType = self.ResourceTypes[resourceTypeIndex]
 
             loc = ResourceLocation()
-            loc.ReadJson(
+            loc._read_json(
                 internalId,
                 providerId,
                 dependencyKey,
@@ -240,22 +240,22 @@ class ContentCatalogData:
             for i, bucket in enumerate(buckets)
         }
 
-    def ReadResourcesBinary(
+    def _read_resources_binary(
         self, reader: CatalogBinaryReader, header: ContentCatalogDataBinaryHeader
     ):
-        keyLocationOffsets = reader.ReadOffsetArray(header.KeysOffset)
+        keyLocationOffsets = reader.read_offset_array(header.KeysOffset)
         self.Resources = {}
         for i in range(0, len(keyLocationOffsets), 2):
             keyOffset = keyLocationOffsets[i]
             locationListOffset = keyLocationOffsets[i + 1]
-            key = SerializedObjectDecoder.DecodeV2(
+            key = SerializedObjectDecoder.decode_v2(
                 reader, keyOffset, reader._patcher, reader._handler
             )
 
-            locationOffsets = reader.ReadOffsetArray(locationListOffset)
+            locationOffsets = reader.read_offset_array(locationListOffset)
             self.Resources[key] = [
-                reader.ReadCustom(
-                    offset, lambda: ResourceLocation.FromBinary(reader, offset)
+                reader.read_custom(
+                    offset, lambda: ResourceLocation._from_binary(reader, offset)
                 )
                 for offset in locationOffsets
             ]

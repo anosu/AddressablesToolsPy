@@ -39,41 +39,41 @@ class SerializedObjectDecoder:
         JsonObject = 7
 
     @staticmethod
-    def DecodeV1(br: BinaryReader):
-        type = SerializedObjectDecoder.ObjectType(br.ReadByte())
+    def decode_v1(br: BinaryReader):
+        type = SerializedObjectDecoder.ObjectType(br.read_byte())
         match type:
             case SerializedObjectDecoder.ObjectType.AsciiString:
-                return SerializedObjectDecoder.ReadString4(br)
+                return SerializedObjectDecoder.read_string4(br)
             case SerializedObjectDecoder.ObjectType.UnicodeString:
-                return SerializedObjectDecoder.ReadString4Unicode(br)
+                return SerializedObjectDecoder.read_string4_unicode(br)
             case SerializedObjectDecoder.ObjectType.UInt16:
-                return br.ReadUInt16()
+                return br.read_uint16()
             case SerializedObjectDecoder.ObjectType.UInt32:
-                return br.ReadUInt32()
+                return br.read_uint32()
             case SerializedObjectDecoder.ObjectType.Int32:
-                return br.ReadInt32()
+                return br.read_int32()
             case SerializedObjectDecoder.ObjectType.Hash128:
-                return Hash128(SerializedObjectDecoder.ReadString1(br))
+                return Hash128(SerializedObjectDecoder.read_string1(br))
             case SerializedObjectDecoder.ObjectType.Type:
-                return TypeReference(SerializedObjectDecoder.ReadString1(br))
+                return TypeReference(SerializedObjectDecoder.read_string1(br))
             case SerializedObjectDecoder.ObjectType.JsonObject:
-                assemblyName = SerializedObjectDecoder.ReadString1(br)
-                className = SerializedObjectDecoder.ReadString1(br)
-                jsonText = SerializedObjectDecoder.ReadString4Unicode(br)
+                assemblyName = SerializedObjectDecoder.read_string1(br)
+                className = SerializedObjectDecoder.read_string1(br)
+                jsonText = SerializedObjectDecoder.read_string4_unicode(br)
 
                 jsonObj = ClassJsonObject(assemblyName, className, jsonText)
-                matchName = jsonObj.Type.GetMatchName()
+                matchName = jsonObj.Type.get_match_name()
                 match matchName:
                     case SerializedObjectDecoder.ABRO_MATCHNAME:
                         return WrappedSerializedObject(
-                            jsonObj.Type, AssetBundleRequestOptions.FromJson(jsonText)
+                            jsonObj.Type, AssetBundleRequestOptions._from_json(jsonText)
                         )
                 return jsonObj
             case _:
                 return None
 
     @staticmethod
-    def DecodeV2(
+    def decode_v2(
         reader: CatalogBinaryReader,
         offset: int,
         patcher: Patcher,
@@ -82,51 +82,53 @@ class SerializedObjectDecoder:
         if offset == uint.MaxValue:
             return None
 
-        reader.Seek(offset)
-        typeNameOffset = reader.ReadUInt32()
-        objectOffset = reader.ReadUInt32()
+        reader.seek(offset)
+        typeNameOffset = reader.read_uint32()
+        objectOffset = reader.read_uint32()
 
         isDefaultObject = objectOffset == uint.MaxValue
 
         # serializedType = SerializedType.FromBinary(reader, typeNameOffset)
-        serializedType = reader.ReadCustom(
-            typeNameOffset, lambda: SerializedType.FromBinary(reader, typeNameOffset)
+        serializedType = reader.read_custom(
+            typeNameOffset, lambda: SerializedType._from_binary(reader, typeNameOffset)
         )
-        matchName = serializedType.GetMatchName()
+        matchName = serializedType.get_match_name()
         match patcher(matchName):
             case SerializedObjectDecoder.INT_MATCHNAME:
                 if isDefaultObject:
                     return 0
-                reader.Seek(objectOffset)
-                return reader.ReadInt32()
+                reader.seek(objectOffset)
+                return reader.read_int32()
             case SerializedObjectDecoder.LONG_MATCHNAME:
                 if isDefaultObject:
                     return 0
-                reader.Seek(objectOffset)
-                return reader.ReadInt64()
+                reader.seek(objectOffset)
+                return reader.read_int64()
             case SerializedObjectDecoder.BOOL_MATCHNAME:
                 if isDefaultObject:
                     return False
-                reader.Seek(objectOffset)
-                return reader.ReadBoolean()
+                reader.seek(objectOffset)
+                return reader.read_boolean()
             case SerializedObjectDecoder.STRING_MATCHNAME:
                 if isDefaultObject:
                     return None
-                reader.Seek(objectOffset)
-                stringOffset = reader.ReadUInt32()
-                seperator = reader.ReadChar()
-                return reader.ReadEncodedString(stringOffset, seperator)
+                reader.seek(objectOffset)
+                stringOffset = reader.read_uint32()
+                seperator = reader.read_char()
+                return reader.read_encoded_string(stringOffset, seperator)
             case SerializedObjectDecoder.HASH128_MATCHNAME:
                 if isDefaultObject:
                     return None
-                reader.Seek(objectOffset)
-                return Hash128(*reader.Read4UInt32())
+                reader.seek(objectOffset)
+                return Hash128(*reader.read_4uint32())
             case SerializedObjectDecoder.ABRO_MATCHNAME:
                 if isDefaultObject:
                     return None
-                obj = reader.ReadCustom(
+                obj = reader.read_custom(
                     objectOffset,
-                    lambda: AssetBundleRequestOptions.FromBinary(reader, objectOffset),
+                    lambda: AssetBundleRequestOptions._from_binary(
+                        reader, objectOffset
+                    ),
                 )
                 return WrappedSerializedObject(serializedType, obj)
             case None:
@@ -135,16 +137,16 @@ class SerializedObjectDecoder:
                 raise Exception(f"Unsupported object type: {matchName}")
 
     @staticmethod
-    def ReadString1(br: BinaryReader):
-        length = br.ReadByte()
-        return br.ReadBytes(length).decode("ascii")
+    def read_string1(br: BinaryReader):
+        length = br.read_byte()
+        return br.read_bytes(length).decode("ascii")
 
     @staticmethod
-    def ReadString4(br: BinaryReader):
-        length = br.ReadInt32()
-        return br.ReadBytes(length).decode("ascii")
+    def read_string4(br: BinaryReader):
+        length = br.read_int32()
+        return br.read_bytes(length).decode("ascii")
 
     @staticmethod
-    def ReadString4Unicode(br: BinaryReader):
-        length = br.ReadInt32()
-        return br.ReadBytes(length).decode("utf-16le")
+    def read_string4_unicode(br: BinaryReader):
+        length = br.read_int32()
+        return br.read_bytes(length).decode("utf-16le")

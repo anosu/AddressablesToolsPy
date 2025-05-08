@@ -25,15 +25,15 @@ class AssetBundleRequestOptions:
     BundleSize: int
 
     @classmethod
-    def FromJson(cls, jsonText: str):
+    def _from_json(cls, jsonText: str):
         obj = cls()
-        obj.ReadJson(jsonText)
+        obj._read_json(jsonText)
         return obj
 
     @classmethod
-    def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
+    def _from_binary(cls, reader: CatalogBinaryReader, offset: int):
         obj = cls()
-        obj.ReadBinary(reader, offset)
+        obj._read_binary(reader, offset)
         return obj
 
     def __repr__(self):
@@ -79,9 +79,9 @@ class AssetBundleRequestOptions:
         Version: int  # not real field
 
         @classmethod
-        def FromBinary(cls, reader: CatalogBinaryReader, offset: int):
+        def _from_binary(cls, reader: CatalogBinaryReader, offset: int):
             obj = cls()
-            obj.Read(reader, offset)
+            obj._read(reader, offset)
             return obj
 
         def __repr__(self):
@@ -120,13 +120,13 @@ class AssetBundleRequestOptions:
             self.ClearOtherCachedVersionsWhenLoaded = clearOtherCachedVersionsWhenLoaded
             self.Version = version
 
-        def Read(self, reader: CatalogBinaryReader, offset: int):
-            reader.Seek(offset)
+        def _read(self, reader: CatalogBinaryReader, offset: int):
+            reader.seek(offset)
 
-            timeout = reader.ReadInt16()
-            redirectLimit = reader.ReadByte()
-            retryCount = reader.ReadByte()
-            flags = reader.ReadInt32()
+            timeout = reader.read_int16()
+            redirectLimit = reader.read_byte()
+            retryCount = reader.read_byte()
+            flags = reader.read_int32()
 
             self.Timeout = timeout
             self.RedirectLimit = redirectLimit
@@ -142,7 +142,7 @@ class AssetBundleRequestOptions:
             self.UseUnityWebRequestForLocalBundles = (flags & 8) != 0
             self.ClearOtherCachedVersionsWhenLoaded = (flags & 16) != 0
 
-    def ReadJson(self, jsonText: str):
+    def _read_json(self, jsonText: str):
         try:
             jsonObj = json.loads(jsonText)
         except json.JSONDecodeError:
@@ -183,28 +183,28 @@ class AssetBundleRequestOptions:
             commonInfoVersion,
         )
 
-    def ReadBinary(self, reader: CatalogBinaryReader, offset: int):
-        reader.Seek(offset)
+    def _read_binary(self, reader: CatalogBinaryReader, offset: int):
+        reader.seek(offset)
 
-        hashOffset = reader.ReadUInt32()
-        bundleNameOffset = reader.ReadUInt32()
-        crc = reader.ReadUInt32()
-        bundleSize = reader.ReadUInt32()
-        commonInfoOffset = reader.ReadUInt32()
+        hashOffset = reader.read_uint32()
+        bundleNameOffset = reader.read_uint32()
+        crc = reader.read_uint32()
+        bundleSize = reader.read_uint32()
+        commonInfoOffset = reader.read_uint32()
 
-        reader.Seek(hashOffset)
-        self.Hash = Hash128(*reader.Read4UInt32()).Value
+        reader.seek(hashOffset)
+        self.Hash = Hash128(*reader.read_4uint32()).Value
 
-        self.BundleName = reader.ReadEncodedString(bundleNameOffset, "_")
+        self.BundleName = reader.read_encoded_string(bundleNameOffset, "_")
         self.Crc = crc
         self.BundleSize = bundleSize
 
         # self.ComInfo = AssetBundleRequestOptions.CommonInfo.FromBinary(
         #     reader, commonInfoOffset
         # )
-        self.ComInfo = reader.ReadCustom(
+        self.ComInfo = reader.read_custom(
             commonInfoOffset,
-            lambda: AssetBundleRequestOptions.CommonInfo.FromBinary(
+            lambda: AssetBundleRequestOptions.CommonInfo._from_binary(
                 reader, commonInfoOffset
             ),
         )
