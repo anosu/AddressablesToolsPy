@@ -7,7 +7,7 @@ class ObjectInitializationData:
     __slots__ = ("Id", "ObjectType", "Data")
 
     Id: str | None
-    ObjectType: SerializedType | None
+    ObjectType: SerializedType
     Data: str | None
 
     @classmethod
@@ -31,9 +31,9 @@ class ObjectInitializationData:
 
     def __init__(
         self,
-        id: str | None = None,
-        objectType: SerializedType | None = None,
-        data: str | None = None,
+        id: str | None,
+        objectType: SerializedType,
+        data: str | None,
     ):
         self.Id = id
         self.ObjectType = objectType

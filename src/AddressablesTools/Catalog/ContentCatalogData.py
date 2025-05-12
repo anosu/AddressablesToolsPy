@@ -23,13 +23,13 @@ class ContentCatalogData:
     BuildResultHash: str | None
     InstanceProviderData: ObjectInitializationData | None
     SceneProviderData: ObjectInitializationData | None
-    ResourceProviderData: list[ObjectInitializationData] | None
-    ProviderIds: list[str] | None
-    InternalIds: list[str] | None
+    ResourceProviderData: list[ObjectInitializationData]
+    ProviderIds: list[str]
+    InternalIds: list[str]
     Keys: list[str] | None
-    ResourceTypes: list[SerializedType] | None
-    InternalIdPrefixes: list[str] | None
-    Resources: dict[object, list[ResourceLocation]] | None
+    ResourceTypes: list[SerializedType]
+    InternalIdPrefixes: list[str]
+    Resources: dict[object, list[ResourceLocation]]
 
     class Bucket:
         __slots__ = ("offset", "entries")
@@ -79,13 +79,13 @@ class ContentCatalogData:
         self.BuildResultHash = None
         self.InstanceProviderData = None
         self.SceneProviderData = None
-        self.ResourceProviderData = None
-        self.ProviderIds = None
-        self.InternalIds = None
+        self.ResourceProviderData = []
+        self.ProviderIds = []
+        self.InternalIds = []
         self.Keys = None
-        self.ResourceTypes = None
-        self.InternalIdPrefixes = None
-        self.Resources = None
+        self.ResourceTypes = []
+        self.InternalIdPrefixes = []
+        self.Resources = {}
 
     def _ReadJson(self, data: ContentCatalogDataJson):
         self.LocatorId = data.m_LocatorId
@@ -104,19 +104,15 @@ class ContentCatalogData:
             for data in data.m_ResourceProviderData
         ]
 
-        self.ProviderIds = list(data.m_ProviderIds)
-        self.InternalIds = list(data.m_InternalIds)
-        self.Keys = list(data.m_Keys) if data.m_Keys is not None else None
+        self.ProviderIds = data.m_ProviderIds
+        self.InternalIds = data.m_InternalIds
+        self.Keys = data.m_Keys
 
         self.ResourceTypes = [
             SerializedType._from_json(type) for type in data.m_resourceTypes
         ]
 
-        self.InternalIdPrefixes = (
-            list(data.m_InternalIdPrefixes)
-            if data.m_InternalIdPrefixes is not None
-            else None
-        )
+        self.InternalIdPrefixes = data.m_InternalIdPrefixes
 
         self._read_resources_json(data)
 

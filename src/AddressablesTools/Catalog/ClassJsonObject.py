@@ -5,7 +5,7 @@ class ClassJsonObject:
     __slots__ = ("Type", "JsonText")
 
     Type: SerializedType
-    JsonText: str | None
+    JsonText: str
 
     def __repr__(self):
         return f"{self.__class__.__name__}(Type={self.Type})"

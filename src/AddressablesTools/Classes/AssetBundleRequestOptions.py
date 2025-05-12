@@ -18,7 +18,7 @@ _AssetLoadMode = AssetLoadMode
 class AssetBundleRequestOptions:
     __slots__ = ("Hash", "Crc", "ComInfo", "BundleName", "BundleSize")
 
-    Hash: str | None
+    Hash: str
     Crc: int
     ComInfo: CommonInfo | None
     BundleName: str | None
@@ -48,7 +48,7 @@ class AssetBundleRequestOptions:
         )
 
     def __init__(self):
-        self.Hash = None
+        self.Hash = ""
         self.Crc = 0
         self.ComInfo = None
         self.BundleName = None
@@ -70,7 +70,7 @@ class AssetBundleRequestOptions:
         Timeout: int
         RedirectLimit: int
         RetryCount: int
-        AssetLoadMode: AssetLoadMode
+        AssetLoadMode: _AssetLoadMode
         ChunkedTransfer: bool
         UseCrcForCachedBundle: bool
         UseUnityWebRequestForLocalBundles: bool
@@ -103,7 +103,7 @@ class AssetBundleRequestOptions:
             timeout: int = 0,
             redirectLimit: int = 0,
             retryCount: int = 0,
-            assetLoadMode: AssetLoadMode = _AssetLoadMode.AllPackedAssetsAndDependencies,
+            assetLoadMode: _AssetLoadMode = _AssetLoadMode.AllPackedAssetsAndDependencies,
             chunkedTransfer: bool = False,
             useCrcForCachedBundle: bool = False,
             useUnityWebRequestForLocalBundles: bool = False,
@@ -173,10 +173,10 @@ class AssetBundleRequestOptions:
 
         self.ComInfo = AssetBundleRequestOptions.CommonInfo(
             jsonObj["m_Timeout"],
-            jsonObj["m_ChunkedTransfer"],
             jsonObj["m_RedirectLimit"],
             jsonObj["m_RetryCount"],
             AssetLoadMode(jsonObj.get("m_AssetLoadMode", 0)),
+            jsonObj["m_ChunkedTransfer"],
             jsonObj.get("m_UseCrcForCachedBundle", False),
             jsonObj.get("m_UseUWRForLocalBundles", False),
             jsonObj.get("m_ClearOtherCachedVersionsWhenLoaded", False),
@@ -208,7 +208,7 @@ class AssetBundleRequestOptions:
                 reader, commonInfoOffset
             ),
         )
-        self.ComInfo.Version = 3
+        self.ComInfo.Version = 3  # type: ignore
 
 
 __all__ = ["AssetBundleRequestOptions"]

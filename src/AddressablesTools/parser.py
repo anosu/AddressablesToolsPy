@@ -71,7 +71,7 @@ def contentCatalogDataDecoder(obj: dict):
             SerializedTypeJson(o["m_AssemblyName"], o["m_ClassName"])
             for o in obj["m_resourceTypes"]
         ],
-        obj.get("m_InternalIdPrefixes"),
+        obj.get("m_InternalIdPrefixes", []),
     )
 
 
@@ -80,14 +80,12 @@ class AddressablesCatalogFileParser:
     def from_binary(
         data: bytes, patcher: Patcher | None = None, handler: Handler | None = None
     ) -> ContentCatalogData:
-        ms = BytesIO(data)
-        reader = CatalogBinaryReader(ms, patcher, handler)
+        reader = CatalogBinaryReader(BytesIO(data), patcher, handler)
         return ContentCatalogData._from_binary(reader)
 
     @staticmethod
     def from_json(data: str) -> ContentCatalogData:
-        data = json.loads(data)
-        ccdJson = contentCatalogDataDecoder(data)
+        ccdJson = contentCatalogDataDecoder(json.loads(data))
         return ContentCatalogData._from_json(ccdJson)
 
 

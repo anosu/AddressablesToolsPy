@@ -35,7 +35,7 @@ class CatalogBinaryReader(BinaryReader):
         return obj
 
     def try_get_cached_object(self, offset: int, objType: Type[T]) -> T | None:
-        return self._objCache.get(offset, None)
+        return self._objCache.get(offset, None)  # type: ignore
 
     def _read_basic_string(self, offset: int, unicode: bool) -> str:
         self.seek(offset - 4)
@@ -49,7 +49,7 @@ class CatalogBinaryReader(BinaryReader):
         while True:
             partStringOffset = self.read_uint32()
             nextPartOffset = self.read_uint32()
-            partStrs.append(self.read_encoded_string(partStringOffset))
+            partStrs.append(self.read_encoded_string(partStringOffset))  # type: ignore
             if nextPartOffset == uint.MaxValue:
                 break
             self.seek(nextPartOffset)
@@ -96,5 +96,5 @@ class CatalogBinaryReader(BinaryReader):
 
     def read_custom(self, offset: int, fetchFunc: Callable[[], T]) -> T:
         if offset in self._objCache:
-            return self._objCache[offset]
-        return self._objCache.setdefault(offset, fetchFunc())
+            return self._objCache[offset]  # type: ignore
+        return self._objCache.setdefault(offset, fetchFunc())  # type: ignore

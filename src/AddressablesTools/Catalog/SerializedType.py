@@ -25,7 +25,7 @@ class SerializedType:
     def __repr__(self):
         return f"{self.__class__.__name__}(AssemblyName={self.AssemblyName}, ClassName={self.ClassName})"
 
-    def __init__(self, assemblyName: str | None = None, className: str | None = None):
+    def __init__(self, assemblyName: str | None, className: str | None):
         self.AssemblyName = assemblyName
         self.ClassName = className
 
