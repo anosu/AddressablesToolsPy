@@ -2,13 +2,11 @@
 name = "addressablestools"
 version = "0.1.7"
 authors = [{ name = "Jitsu", email = "jitsu233@gmail.com" }]
-description = "Python copy of AddressablesTools"
+description = "Python library for reading Unity Addressables catalog files"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
-dependencies = [
-    "orjson>=3.10.18",
-]
+dependencies = []
 
 [project.urls]
 "Homepage" = "https://github.com/anosu/AddressablesToolsPy"
@@ -22,3 +20,7 @@ dev = ["pytest>=8.3.5", "ruff>=0.11.7"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100

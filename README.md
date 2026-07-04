@@ -1,10 +1,10 @@
 # AddressablesToolsPy
 
-Python copy of [AddressablesTools](https://github.com/nesrak1/AddressablesTools)
+Python library for reading Unity Addressables catalog files.
 
-**Only reading is implemented**
+Only reading is implemented.
 
-### Usage
+## Usage
 
 ```shell
 pip install addressablestools
@@ -12,104 +12,65 @@ pip install addressablestools
 
 ```python
 from pathlib import Path
-from AddressablesTools import parse
+
+from addressablestools import parse
+from addressablestools.models import AssetBundleRequestOptions, WrappedSerializedObject
 
 
-def main():
-    data = Path("tests/samples/catalog.json").read_text("utf-8")
-    catalog = parse(data)
-    for key, locs in catalog.Resources.items():
-        if not isinstance(key, str):
-            continue
-        if not key.endswith(".bundle"):
-            continue
-        res_loc = locs[0]
+data = Path("tests/samples/catalog.json").read_text(encoding="utf-8")
+catalog = parse(data)
+
+for key, locations in catalog.resources.items():
+    if not isinstance(key, str) or not key.endswith(".bundle"):
+        continue
+
+    resource_data = locations[0].data
+    if isinstance(resource_data, WrappedSerializedObject) and isinstance(
+        resource_data.object,
+        AssetBundleRequestOptions,
+    ):
         print(
-            f"Bundle {key}, Crc: {res_loc.Data.Object.Crc}, Hash: {res_loc.Data.Object.Hash}"
+            f"Bundle {key}, Crc: {resource_data.object.crc}, "
+            f"Hash: {resource_data.object.hash}"
         )
-
-    print("-" * 50)
-
-    asset_locs = catalog.Resources[
-        "Assets/Paripari/AddressableAssets/VFX Texture Assets/ParticleTextures/sparkle.png"
-    ]
-    dep_key = asset_locs[0].DependencyKey
-    print(f"Dependency of {asset_locs[0].PrimaryKey}: {dep_key}")
-    dep_bundle = catalog.Resources[dep_key][0]
-    print(f"ProviderId of {dep_bundle.PrimaryKey}: {dep_bundle.ProviderId}")
-    print(f"InternalId of {dep_bundle.PrimaryKey}: {dep_bundle.InternalId}")
-
-
-if __name__ == "__main__":
-    main()
 ```
 
-### Custom object parsing
+## Binary custom object parsing
 
-**This is just used for binary reading.**
-
-There may be some custom assemblies and classes uesd to load AssetBundles.
-
-In gerneral, tool will not be able to parse these objects and raise an error.
-
-For example, if you encounter an error like:
-
-```
-Unsupported object type: 0; System.String
-```
-
-You can provide a patcher and a handler (optional) to try to parse the custom object type.
-
-#### Patcher and Handler
-
-A patcher is a function that takes a `matchName: str` and returns a new matchName or `None` which is used to decide how the object should be parsed.
-
-There is a default patcher that returns the original matchName.
-
-A handler is a function that takes 3 arguments: `reader: CatalogBinaryReader`, `objectOffset: int`, and `isDefault: bool` and returns `Any` (the parsed object).
-
-When the patcher returns `None`, your custom handler will be used.
-
-Followings are some examples:
+Binary catalogs may contain custom serialized object types. Use a patcher to remap a custom match name to a supported built-in match name, or return `None` to delegate parsing to a handler.
 
 ```python
 from pathlib import Path
-import AddressablesTools
-from AddressablesTools.classes import SerializedObjectDecoder
+
+from addressablestools import parse_binary
+from addressablestools.decoder import SerializedObjectDecoder
 
 
-def patcher(matchName: str) -> str:
-    # just try to parse custom AssetBundleRequestOptions in default way
-    if matchName == "GeePlus.GPUL.AddressablesManager; GeePlus.GPUL.AddressablesManager.ResourceProviders.EncryptedAssetBundleRequestOptions": # custom AssetBundleRequestOptions class
-        return SerializedObjectDecoder.ABRO_MATCHNAME # default matchName for AssetBundleRequestOptions
-    return matchName
+def patcher(match_name: str) -> str | None:
+    if match_name == "Custom.Assembly; Custom.AssetBundleRequestOptions":
+        return SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME
+    return match_name
 
-data = Path("catalog.bin").read_bytes()
 
-catalog = AddressablesTools.parse_binary(data, patcher=patcher)
+catalog = parse_binary(Path("catalog.bin").read_bytes(), patcher=patcher)
 ```
+
+## Legacy compatibility
+
+Existing callers can keep using the old import path while migrating:
 
 ```python
-from typing import Any
 from pathlib import Path
+
 import AddressablesTools
-from AddressablesTools.classes import CatalogBinaryReader
+from AddressablesTools.classes import AssetBundleRequestOptions
 
 
-def patcher(matchName: str) -> str:
-    if matchName == "Custom; System.Int32":
-        return None
-    return matchName
-
-def handler(reader: CatalogBinaryReader, offset: int, is_default: bool) -> Any:
-    if is_default:
-        return 0
-    reader.seek(offset)
-    return reader.read_int32()
-
-data = Path("catalog.bin").read_bytes()
-
-catalog = AddressablesTools.parse_binary(data, patcher=patcher, handler=handler)
+catalog = AddressablesTools.parse_json(Path("tests/samples/catalog.json").read_text("utf-8"))
+for key, locations in catalog.Resources.items():
+    if isinstance(key, str) and key.endswith(".bundle"):
+        assert isinstance(locations[0].Data.Object, AssetBundleRequestOptions)
+        print(locations[0].Data.Object.Crc)
 ```
 
-> I havn't tested the above code, it may not work.
+The legacy API is implemented as a thin compatibility module over `addressablestools`. New code should import `addressablestools` directly.
