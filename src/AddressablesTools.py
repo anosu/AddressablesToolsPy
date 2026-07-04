@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import addressablestools
 from addressablestools.binary import CatalogBinaryReader
@@ -309,11 +309,14 @@ def parse(
     patcher: Patcher | None = None,
     handler: Handler | None = None,
 ) -> CompatCatalog:
-    return wrap_legacy(addressablestools.parse(data, patcher=patcher, handler=handler))  # type: ignore[return-value]
+    return cast(
+        CompatCatalog,
+        wrap_legacy(addressablestools.parse(data, patcher=patcher, handler=handler)),
+    )
 
 
 def parse_json(data: str) -> CompatCatalog:
-    return wrap_legacy(addressablestools.parse_json(data))  # type: ignore[return-value]
+    return cast(CompatCatalog, wrap_legacy(addressablestools.parse_json(data)))
 
 
 def parse_binary(
@@ -321,7 +324,10 @@ def parse_binary(
     patcher: Patcher | None = None,
     handler: Handler | None = None,
 ) -> CompatCatalog:
-    return wrap_legacy(addressablestools.parse_binary(data, patcher=patcher, handler=handler))  # type: ignore[return-value]
+    return cast(
+        CompatCatalog,
+        wrap_legacy(addressablestools.parse_binary(data, patcher=patcher, handler=handler)),
+    )
 
 
 class _Parser:

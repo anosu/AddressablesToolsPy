@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 from struct import Struct, calcsize, unpack
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from addressablestools.exceptions import BinaryReadError, UnsupportedCatalogVersionError
 from addressablestools.models import SerializedType
@@ -106,7 +106,7 @@ class CatalogBinaryReader(BinaryReader):
 
     def read_custom(self, offset: int, fetch: Callable[[], T]) -> T:
         if offset in self._object_cache:
-            return self._object_cache[offset]  # type: ignore[return-value]
+            return cast(T, self._object_cache[offset])
         value = fetch()
         self._object_cache[offset] = value
         return value

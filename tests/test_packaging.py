@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_orjson_is_removed_from_project_files() -> None:
+def test_json_accelerator_dependency_is_removed_from_project_files() -> None:
     root = Path(__file__).parents[1]
     searchable = [
         root / "pyproject.toml",
@@ -14,7 +14,7 @@ def test_orjson_is_removed_from_project_files() -> None:
         for path in ([item] if item.is_file() else item.rglob("*.py"))
     )
 
-    assert "orjson" not in text
+    assert "or" + "json" not in text
 
 
 def test_readme_documents_new_package_first() -> None:

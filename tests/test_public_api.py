@@ -1,4 +1,5 @@
 import pytest
+from typing import Any, cast
 
 import addressablestools
 from addressablestools import parse, parse_binary, parse_json
@@ -28,4 +29,4 @@ def test_parse_dispatches_binary_bytes(catalog_binary_bytes: bytes) -> None:
 
 def test_parse_rejects_unsupported_input_type() -> None:
     with pytest.raises(CatalogParseError, match="str or bytes"):
-        parse({"not": "supported"})  # type: ignore[arg-type]
+        parse(cast(Any, {"not": "supported"}))

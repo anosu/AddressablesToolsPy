@@ -1,6 +1,7 @@
 from io import BytesIO
 import json
 import struct
+from typing import Any, cast
 
 import pytest
 
@@ -66,26 +67,32 @@ def test_decode_v2_calls_handler_when_patcher_returns_none() -> None:
         patcher=lambda _: None,
         handler=lambda _reader, offset, is_default: (offset, is_default),
     )
-    reader.seek = lambda _offset, _whence=0: None  # type: ignore[method-assign]
-    reader.read_uint32 = iter([8, UINT32_MAX]).__next__  # type: ignore[method-assign]
-    reader.read_serialized_type = lambda _offset: type(  # type: ignore[method-assign]
-        "FakeType",
-        (),
-        {"match_name": "Custom; System.Int32"},
-    )()
+    setattr(reader, "seek", lambda _offset, _whence=0: None)
+    setattr(reader, "read_uint32", iter([8, UINT32_MAX]).__next__)
+    setattr(
+        reader,
+        "read_serialized_type",
+        lambda _offset: cast(
+            Any,
+            type("FakeType", (), {"match_name": "Custom; System.Int32"})(),
+        ),
+    )
 
     assert SerializedObjectDecoder.decode_v2(reader, 0) == (UINT32_MAX, True)
 
 
 def test_decode_v2_raises_for_unsupported_type() -> None:
     reader = CatalogBinaryReader(BytesIO(b"\x00" * 32))
-    reader.seek = lambda _offset, _whence=0: None  # type: ignore[method-assign]
-    reader.read_uint32 = iter([8, UINT32_MAX]).__next__  # type: ignore[method-assign]
-    reader.read_serialized_type = lambda _offset: type(  # type: ignore[method-assign]
-        "FakeType",
-        (),
-        {"match_name": "Custom; Unsupported"},
-    )()
+    setattr(reader, "seek", lambda _offset, _whence=0: None)
+    setattr(reader, "read_uint32", iter([8, UINT32_MAX]).__next__)
+    setattr(
+        reader,
+        "read_serialized_type",
+        lambda _offset: cast(
+            Any,
+            type("FakeType", (), {"match_name": "Custom; Unsupported"})(),
+        ),
+    )
 
     with pytest.raises(UnsupportedSerializedObjectError, match="Custom; Unsupported"):
         SerializedObjectDecoder.decode_v2(reader, 0)
