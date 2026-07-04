@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import warnings
 from types import ModuleType
 from typing import Any, cast
 
@@ -309,6 +310,7 @@ def parse(
     patcher: Patcher | None = None,
     handler: Handler | None = None,
 ) -> CompatCatalog:
+    _warn_deprecated("AddressablesTools.parse")
     return cast(
         CompatCatalog,
         wrap_legacy(addressablestools.parse(data, patcher=patcher, handler=handler)),
@@ -316,6 +318,7 @@ def parse(
 
 
 def parse_json(data: str) -> CompatCatalog:
+    _warn_deprecated("AddressablesTools.parse_json")
     return cast(CompatCatalog, wrap_legacy(addressablestools.parse_json(data)))
 
 
@@ -324,9 +327,18 @@ def parse_binary(
     patcher: Patcher | None = None,
     handler: Handler | None = None,
 ) -> CompatCatalog:
+    _warn_deprecated("AddressablesTools.parse_binary")
     return cast(
         CompatCatalog,
         wrap_legacy(addressablestools.parse_binary(data, patcher=patcher, handler=handler)),
+    )
+
+
+def _warn_deprecated(name: str) -> None:
+    warnings.warn(
+        f"{name} is deprecated; use the addressablestools package instead.",
+        DeprecationWarning,
+        stacklevel=3,
     )
 
 

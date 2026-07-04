@@ -1,6 +1,6 @@
 [project]
 name = "addressablestools"
-version = "0.1.7"
+version = "0.2.0"
 authors = [{ name = "Jitsu", email = "jitsu233@gmail.com" }]
 description = "Python library for reading Unity Addressables catalog files"
 readme = "README.md"

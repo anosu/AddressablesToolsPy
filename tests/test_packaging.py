@@ -22,3 +22,14 @@ def test_readme_documents_new_package_first() -> None:
 
     assert "from addressablestools import parse" in readme
     assert "Legacy compatibility" in readme
+    assert "Deprecated API" in readme
+    assert "## Parse JSON catalogs" in readme
+    assert "## Parse binary catalogs" in readme
+    assert "## Query resource locations" in readme
+    assert "## Custom binary object handling" in readme
+
+
+def test_project_version_is_020() -> None:
+    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert 'version = "0.2.0"' in pyproject
