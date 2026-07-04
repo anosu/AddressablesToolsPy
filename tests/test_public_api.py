@@ -1,0 +1,31 @@
+import pytest
+
+import addressablestools
+from addressablestools import parse, parse_binary, parse_json
+from addressablestools.exceptions import CatalogParseError
+from addressablestools.models import ContentCatalogData
+
+
+def test_new_package_exports_parse_functions() -> None:
+    assert addressablestools.parse is parse
+    assert addressablestools.parse_json is parse_json
+    assert addressablestools.parse_binary is parse_binary
+
+
+def test_parse_dispatches_json_text(catalog_json_text: str) -> None:
+    catalog = parse(catalog_json_text)
+
+    assert isinstance(catalog, ContentCatalogData)
+    assert catalog.resources
+
+
+def test_parse_dispatches_binary_bytes(catalog_binary_bytes: bytes) -> None:
+    catalog = parse(catalog_binary_bytes)
+
+    assert isinstance(catalog, ContentCatalogData)
+    assert catalog.resources
+
+
+def test_parse_rejects_unsupported_input_type() -> None:
+    with pytest.raises(CatalogParseError, match="str or bytes"):
+        parse({"not": "supported"})  # type: ignore[arg-type]
