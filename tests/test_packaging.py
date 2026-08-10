@@ -44,6 +44,19 @@ def test_changelog_documents_current_release() -> None:
     assert "include CHANGELOG.md" in manifest
 
 
+def test_pypi_workflow_uses_trusted_publishing() -> None:
+    workflow = Path(".github/workflows/publish.yml").read_text(encoding="utf-8")
+    publishing_guide = Path("PUBLISHING.md").read_text(encoding="utf-8")
+
+    assert "pypa/gh-action-pypi-publish@release/v1" in workflow
+    assert "id-token: write" in workflow
+    assert "environment:" in workflow
+    assert "name: pypi" in workflow
+    assert "PYPI_TOKEN" not in workflow
+    assert "password:" not in workflow
+    assert "Trusted Publishing" in publishing_guide
+
+
 def test_project_declares_reproducible_build_backend_and_modern_license() -> None:
     pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
 

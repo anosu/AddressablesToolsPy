@@ -142,7 +142,8 @@ catalog = parse_binary(Path("catalog.bin").read_bytes(), registry=registry)
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
+See the [changelog](https://github.com/anosu/AddressablesToolsPy/blob/main/CHANGELOG.md)
+for release history and upgrade notes.
 
 ## Deprecated API
 
