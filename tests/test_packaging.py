@@ -49,6 +49,8 @@ def test_pypi_workflow_uses_trusted_publishing() -> None:
     publishing_guide = Path("PUBLISHING.md").read_text(encoding="utf-8")
 
     assert "pypa/gh-action-pypi-publish@release/v1" in workflow
+    assert "actions/upload-artifact@v7" in workflow
+    assert "actions/download-artifact@v8" in workflow
     assert "id-token: write" in workflow
     assert "environment:" in workflow
     assert "name: pypi" in workflow
