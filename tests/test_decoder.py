@@ -96,7 +96,7 @@ def test_decode_v2_supports_version_3_primitive_types(
     reader = CatalogBinaryReader(BytesIO(b"\x00" * 32))
     reader.version = 3
     setattr(reader, "seek", lambda _offset, _whence=0: None)
-    setattr(reader, "read_uint32", iter([8, UINT32_MAX]).__next__)
+    setattr(reader, "read_struct_from", lambda _parser, _offset: (8, UINT32_MAX))
     setattr(
         reader,
         "read_serialized_type",
@@ -110,7 +110,7 @@ def test_decode_v2_uses_registered_custom_decoder() -> None:
     reader = CatalogBinaryReader(BytesIO(b"\x00" * 32))
     reader.version = 3
     setattr(reader, "seek", lambda _offset, _whence=0: None)
-    setattr(reader, "read_uint32", iter([8, 12]).__next__)
+    setattr(reader, "read_struct_from", lambda _parser, _offset: (8, 12))
     setattr(
         reader,
         "read_serialized_type",

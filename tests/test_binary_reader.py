@@ -26,6 +26,28 @@ def test_binary_reader_rejects_negative_read_size() -> None:
         reader.read_exact(-1)
 
 
+@pytest.mark.parametrize("use_buffer", [False, True])
+def test_binary_reader_reads_at_offset_without_changing_cursor(use_buffer: bool) -> None:
+    data = b"xx" + struct.pack("<I", 0x12345678) + b"yy"
+    stream = BytesIO(data)
+    stream.seek(1)
+    reader = BinaryReader(stream, _buffer=data if use_buffer else None)
+
+    assert reader.read_struct_at(struct.Struct("<I"), 2) == (0x12345678,)
+    assert reader.read_bytes_at(2, 4) == struct.pack("<I", 0x12345678)
+    assert reader.tell() == 1
+
+
+def test_binary_reader_rejects_out_of_range_offset_read() -> None:
+    data = b"data"
+    reader = BinaryReader(BytesIO(data), _buffer=data)
+
+    with pytest.raises(BinaryReadError, match="position 2"):
+        reader.read_struct_at(struct.Struct("<I"), 2)
+    with pytest.raises(BinaryReadError, match="expected 4 bytes"):
+        reader.read_bytes_at(2, 4)
+
+
 def test_catalog_reader_rejects_invalid_offset_array_byte_size() -> None:
     data = struct.pack("<i", 3) + b"abc"
     reader = CatalogBinaryReader(BytesIO(data))

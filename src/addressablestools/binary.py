@@ -19,14 +19,16 @@ _UINT32 = Struct("<I")
 _INT64 = Struct("<q")
 _UINT64 = Struct("<Q")
 _BOOL = Struct("<?")
+_TWO_UINT32 = Struct("<2I")
 _FOUR_UINT32 = Struct("<4I")
 
 T = TypeVar("T")
 
 
 class BinaryReader:
-    def __init__(self, stream: BytesIO) -> None:
+    def __init__(self, stream: BytesIO, *, _buffer: bytes | None = None) -> None:
         self.stream = stream
+        self._buffer = _buffer
 
     def seek(self, position: int, whence: int = 0) -> None:
         try:
@@ -75,8 +77,65 @@ class BinaryReader:
     def read_char(self) -> str:
         return self.read_exact(1).decode()
 
+    def read_struct(self, parser: Struct) -> tuple[object, ...]:
+        """Read one precompiled ``struct.Struct`` value."""
+
+        return parser.unpack(self.read_exact(parser.size))
+
+    def read_struct_at(self, parser: Struct, position: int) -> tuple[object, ...]:
+        """Read a precompiled structure at an absolute position without changing the cursor."""
+
+        if self._buffer is None:
+            current_position = self.tell()
+            self.seek(position)
+            try:
+                return self.read_struct(parser)
+            finally:
+                self.seek(current_position)
+        if position < 0 or position + parser.size > len(self._buffer):
+            raise BinaryReadError(
+                f"expected {parser.size} bytes at position {position}, "
+                f"buffer has {len(self._buffer)} bytes"
+            )
+        return parser.unpack_from(self._buffer, position)
+
+    def read_struct_from(self, parser: Struct, position: int) -> tuple[object, ...]:
+        """Read a structure at an absolute position, using the fast buffer when available."""
+
+        if self._buffer is None:
+            self.seek(position)
+            return self.read_struct(parser)
+        return self.read_struct_at(parser, position)
+
+    def read_bytes_at(self, position: int, count: int) -> bytes:
+        """Read bytes at an absolute position without changing the cursor."""
+
+        if count < 0:
+            raise BinaryReadError("read byte count must be non-negative")
+        if self._buffer is None:
+            current_position = self.tell()
+            self.seek(position)
+            try:
+                return self.read_exact(count)
+            finally:
+                self.seek(current_position)
+        end = position + count
+        if position < 0 or end > len(self._buffer):
+            available = max(0, len(self._buffer) - max(0, position))
+            raise BinaryReadError(f"expected {count} bytes, got {available}")
+        return self._buffer[position:end]
+
+    def read_two_uint32(self) -> tuple[int, int]:
+        return _TWO_UINT32.unpack(self.read_exact(_TWO_UINT32.size))
+
+    def read_two_uint32_at(self, position: int) -> tuple[int, int]:
+        return cast(tuple[int, int], self.read_struct_at(_TWO_UINT32, position))
+
+    def read_two_uint32_from(self, position: int) -> tuple[int, int]:
+        return cast(tuple[int, int], self.read_struct_from(_TWO_UINT32, position))
+
     def read_four_uint32(self) -> tuple[int, int, int, int]:
-        return _FOUR_UINT32.unpack(self.read_exact(16))
+        return _FOUR_UINT32.unpack(self.read_exact(_FOUR_UINT32.size))
 
     def read_format(self, fmt: str) -> tuple[object, ...]:
         try:
@@ -87,8 +146,8 @@ class BinaryReader:
 
 
 class CatalogBinaryReader(BinaryReader):
-    def __init__(self, stream: BytesIO) -> None:
-        super().__init__(stream)
+    def __init__(self, stream: BytesIO, *, _buffer: bytes | None = None) -> None:
+        super().__init__(stream, _buffer=_buffer)
         self.version = 1
         self._object_cache: dict[int, object] = {}
         self._string_cache: dict[tuple[int, str], str] = {}
@@ -111,11 +170,16 @@ class CatalogBinaryReader(BinaryReader):
         return value
 
     def _read_basic_string(self, offset: int, unicode: bool) -> str:
-        self.seek(offset - 4)
-        length = self.read_int32()
+        if self._buffer is None:
+            self.seek(offset - _INT32.size)
+            length = self.read_int32()
+        else:
+            length = cast(int, self.read_struct_at(_INT32, offset - _INT32.size)[0])
         if length < 0:
             raise BinaryReadError("string byte length must be non-negative")
-        data = self.read_bytes(length)
+        data = (
+            self.read_bytes(length) if self._buffer is None else self.read_bytes_at(offset, length)
+        )
         return data.decode("utf-16-le" if unicode else "ascii")
 
     def _read_dynamic_string(self, offset: int, separator: str) -> str:
@@ -128,9 +192,11 @@ class CatalogBinaryReader(BinaryReader):
                     f"dynamic string part chain contains a cycle at offset {next_part_offset}"
                 )
             visited_offsets.add(next_part_offset)
-            self.seek(next_part_offset)
-            part_string_offset = self.read_uint32()
-            next_part_offset = self.read_uint32()
+            if self._buffer is None:
+                self.seek(next_part_offset)
+                part_string_offset, next_part_offset = self.read_two_uint32()
+            else:
+                part_string_offset, next_part_offset = self.read_two_uint32_at(next_part_offset)
             part = self.read_encoded_string(part_string_offset)
             if part is not None:
                 parts.append(part)
@@ -174,13 +240,22 @@ class CatalogBinaryReader(BinaryReader):
         if cached is not None:
             return cached
 
-        self.seek(encoded_offset - 4)
-        byte_size = self.read_int32()
+        if self._buffer is None:
+            self.seek(encoded_offset - _INT32.size)
+            byte_size = self.read_int32()
+        else:
+            byte_size = cast(int, self.read_struct_at(_INT32, encoded_offset - _INT32.size)[0])
         if byte_size < 0:
             raise BinaryReadError("offset array byte size must be non-negative")
         if byte_size % 4 != 0:
             raise BinaryReadError("offset array byte size must be a multiple of 4")
-        offsets = cast(tuple[int, ...], self.read_format(f"<{byte_size // 4}I"))
+        parser = Struct(f"<{byte_size // 4}I")
+        offsets = cast(
+            tuple[int, ...],
+            self.read_struct(parser)
+            if self._buffer is None
+            else self.read_struct_at(parser, encoded_offset),
+        )
         return self.cache_and_return(encoded_offset, list(offsets))
 
     def read_serialized_type(self, offset: int) -> SerializedType:
@@ -188,9 +263,7 @@ class CatalogBinaryReader(BinaryReader):
 
 
 def _read_serialized_type(reader: CatalogBinaryReader, offset: int) -> SerializedType:
-    reader.seek(offset)
-    assembly_name_offset = reader.read_uint32()
-    class_name_offset = reader.read_uint32()
+    assembly_name_offset, class_name_offset = reader.read_two_uint32_from(offset)
     return SerializedType(
         assembly_name=reader.read_encoded_string(assembly_name_offset, "."),
         class_name=reader.read_encoded_string(class_name_offset, "."),

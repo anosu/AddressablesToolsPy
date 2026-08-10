@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import partial
 from io import BytesIO
 import json
-from struct import error as StructError
+from struct import Struct, error as StructError, unpack_from
 from typing import Mapping, Sequence, TypeVar, cast
 
 from addressablestools.binary import BinaryReader, CatalogBinaryHeader, CatalogBinaryReader
@@ -22,7 +22,16 @@ from addressablestools.models import (
 @dataclass(frozen=True, slots=True)
 class _Bucket:
     offset: int
-    entries: list[int]
+    entries: tuple[int, ...]
+
+
+_INT32 = Struct("<i")
+_BUCKET_HEADER = Struct("<2i")
+_JSON_LOCATION = Struct("<7i")
+_BINARY_LOCATION = Struct("<4Ii2I")
+_OBJECT_INITIALIZATION_DATA = Struct("<3I")
+_ASCII_STRING_OBJECT_TYPE = SerializedObjectDecoder.ObjectType.ASCII_STRING.value
+_UNICODE_STRING_OBJECT_TYPE = SerializedObjectDecoder.ObjectType.UNICODE_STRING.value
 
 
 def parse_json_catalog(data: str) -> ContentCatalogData:
@@ -75,7 +84,7 @@ def parse_binary_catalog(
     data: bytes,
     registry: DecoderRegistry | None = None,
 ) -> ContentCatalogData:
-    reader = CatalogBinaryReader(BytesIO(data))
+    reader = CatalogBinaryReader(BytesIO(data), _buffer=data)
     header = CatalogBinaryHeader.read(reader)
 
     resource_provider_offsets = reader.read_offset_array(header.init_objects_array_offset)
@@ -118,26 +127,33 @@ def _decode_json_resources(
 
 
 def _read_buckets(bucket_data_string: str) -> list[_Bucket]:
-    bucket_reader = BinaryReader(BytesIO(b64decode(bucket_data_string)))
-    bucket_count = bucket_reader.read_int32()
+    data = b64decode(bucket_data_string)
+    bucket_count = cast(int, _INT32.unpack_from(data)[0])
     if bucket_count < 0:
         raise CatalogParseError("bucket count must be non-negative")
+
     buckets: list[_Bucket] = []
+    cursor = _INT32.size
     for _ in range(bucket_count):
-        offset = bucket_reader.read_int32()
-        entry_count = bucket_reader.read_int32()
+        offset, entry_count = cast(
+            tuple[int, int],
+            _BUCKET_HEADER.unpack_from(data, cursor),
+        )
+        cursor += _BUCKET_HEADER.size
         if offset < 0:
             raise CatalogParseError("bucket key offset must be non-negative")
         if entry_count < 0:
             raise CatalogParseError("bucket entry count must be non-negative")
-        entries = list(cast(tuple[int, ...], bucket_reader.read_format(f"<{entry_count}i")))
+        entries = cast(tuple[int, ...], unpack_from(f"<{entry_count}i", data, cursor))
+        cursor += entry_count * _INT32.size
         buckets.append(_Bucket(offset=offset, entries=entries))
     return buckets
 
 
 def _read_keys(key_data_string: str, buckets: list[_Bucket]) -> list[object]:
-    key_stream = BytesIO(b64decode(key_data_string))
-    key_reader = BinaryReader(key_stream)
+    key_data = b64decode(key_data_string)
+    key_stream = BytesIO(key_data)
+    key_reader = BinaryReader(key_stream, _buffer=key_data)
     key_count = key_reader.read_int32()
     if key_count < 0:
         raise CatalogParseError("key count must be non-negative")
@@ -145,7 +161,25 @@ def _read_keys(key_data_string: str, buckets: list[_Bucket]) -> list[object]:
         raise CatalogParseError(f"key count {key_count} does not match bucket count {len(buckets)}")
     keys: list[object] = []
     for index in range(key_count):
-        key_stream.seek(buckets[index].offset)
+        offset = buckets[index].offset
+        object_type = key_data[offset]
+        # String keys dominate real catalogs, so decode them without per-field reader calls.
+        if object_type <= _UNICODE_STRING_OBJECT_TYPE:
+            length = cast(int, _INT32.unpack_from(key_data, offset + 1)[0])
+            if length < 0:
+                raise CatalogParseError("key string byte length must be non-negative")
+            start = offset + 1 + _INT32.size
+            end = start + length
+            if end > len(key_data):
+                raise CatalogParseError(
+                    f"key string data is truncated: expected end offset {end}, "
+                    f"got {len(key_data)} bytes"
+                )
+            encoding = "ascii" if object_type == _ASCII_STRING_OBJECT_TYPE else "utf-16-le"
+            keys.append(key_data[start:end].decode(encoding))
+            continue
+
+        key_stream.seek(offset)
         keys.append(SerializedObjectDecoder.decode_v1(key_reader))
     return keys
 
@@ -155,22 +189,32 @@ def _read_locations(
     raw: Mapping[str, object],
     keys: list[object],
 ) -> list[ResourceLocation]:
-    entry_reader = BinaryReader(BytesIO(b64decode(str(raw["m_EntryDataString"]))))
-    extra_stream = BytesIO(b64decode(str(raw["m_ExtraDataString"])))
-    extra_reader = BinaryReader(extra_stream)
-    entry_count = entry_reader.read_int32()
+    entry_data = b64decode(str(raw["m_EntryDataString"]))
+    extra_data = b64decode(str(raw["m_ExtraDataString"]))
+    extra_stream = BytesIO(extra_data)
+    extra_reader = BinaryReader(extra_stream, _buffer=extra_data)
+    entry_count = cast(int, _INT32.unpack_from(entry_data)[0])
     if entry_count < 0:
         raise CatalogParseError("resource location count must be non-negative")
+    entry_data_end = _INT32.size + entry_count * _JSON_LOCATION.size
+    if len(entry_data) < entry_data_end:
+        raise CatalogParseError(
+            f"resource location data is truncated: expected {entry_data_end} bytes, "
+            f"got {len(entry_data)}"
+        )
     locations: list[ResourceLocation] = []
 
-    for _ in range(entry_count):
-        internal_id_index = entry_reader.read_int32()
-        provider_index = entry_reader.read_int32()
-        dependency_key_index = entry_reader.read_int32()
-        dependency_hash = entry_reader.read_int32()
-        data_index = entry_reader.read_int32()
-        primary_key_index = entry_reader.read_int32()
-        resource_type_index = entry_reader.read_int32()
+    entry_records = _JSON_LOCATION.iter_unpack(memoryview(entry_data)[_INT32.size : entry_data_end])
+    for record in entry_records:
+        (
+            internal_id_index,
+            provider_index,
+            dependency_key_index,
+            dependency_hash,
+            data_index,
+            primary_key_index,
+            resource_type_index,
+        ) = record
 
         internal_id = _apply_internal_id_prefix(
             _item_at(catalog.internal_ids, internal_id_index, "internal ID"),
@@ -273,10 +317,10 @@ def _object_initialization_data_from_binary(
     reader: CatalogBinaryReader,
     offset: int,
 ) -> ObjectInitializationData:
-    reader.seek(offset)
-    id_offset = reader.read_uint32()
-    object_type_offset = reader.read_uint32()
-    data_offset = reader.read_uint32()
+    id_offset, object_type_offset, data_offset = cast(
+        tuple[int, int, int],
+        reader.read_struct_from(_OBJECT_INITIALIZATION_DATA, offset),
+    )
     return ObjectInitializationData(
         id=reader.read_encoded_string(id_offset),
         object_type=reader.read_serialized_type(object_type_offset),
@@ -313,14 +357,18 @@ def _resource_location_from_binary(
     offset: int,
     registry: DecoderRegistry | None = None,
 ) -> ResourceLocation:
-    reader.seek(offset)
-    primary_key_offset = reader.read_uint32()
-    internal_id_offset = reader.read_uint32()
-    provider_id_offset = reader.read_uint32()
-    dependencies_offset = reader.read_uint32()
-    dependency_hash_code = reader.read_int32()
-    data_offset = reader.read_uint32()
-    type_offset = reader.read_uint32()
+    (
+        primary_key_offset,
+        internal_id_offset,
+        provider_id_offset,
+        dependencies_offset,
+        dependency_hash_code,
+        data_offset,
+        type_offset,
+    ) = cast(
+        tuple[int, int, int, int, int, int, int],
+        reader.read_struct_from(_BINARY_LOCATION, offset),
+    )
 
     primary_key = reader.read_encoded_string(primary_key_offset, "/")
     internal_id = reader.read_encoded_string(internal_id_offset, "/")

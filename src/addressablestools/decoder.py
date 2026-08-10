@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 import json
+from struct import Struct
 from typing import TypeVar, cast, overload
 
 from addressablestools.binary import UINT32_MAX, BinaryReader, CatalogBinaryReader
@@ -38,6 +39,12 @@ class BinaryDecodeContext:
 
 T = TypeVar("T")
 type ObjectDecoder[T] = Callable[[BinaryDecodeContext], T]
+
+_OBJECT_DATA = Struct("<2I")
+_STRING_OBJECT = Struct("<IB")
+_HASH128 = Struct("<4I")
+_ASSET_BUNDLE_REQUEST_OPTIONS = Struct("<5I")
+_COMMON_INFO = Struct("<hBBi")
 
 
 class DecoderRegistry:
@@ -185,9 +192,10 @@ class SerializedObjectDecoder:
         if offset == UINT32_MAX:
             return None, None
 
-        reader.seek(offset)
-        type_name_offset = reader.read_uint32()
-        object_offset = reader.read_uint32()
+        type_name_offset, object_offset = cast(
+            tuple[int, int],
+            reader.read_struct_from(_OBJECT_DATA, offset),
+        )
         is_default_object = object_offset == UINT32_MAX
 
         serialized_type = reader.read_serialized_type(type_name_offset)
@@ -229,9 +237,11 @@ class SerializedObjectDecoder:
             ):
                 if is_default_object:
                     return None, serialized_type
-                reader.seek(object_offset)
-                string_offset = reader.read_uint32()
-                separator = reader.read_char()
+                string_offset, separator_value = cast(
+                    tuple[int, int],
+                    reader.read_struct_from(_STRING_OBJECT, object_offset),
+                )
+                separator = chr(separator_value)
                 return reader.read_encoded_string(string_offset, separator), serialized_type
             case SerializedObjectDecoder.HASH128_MATCH_NAME:
                 if is_default_object:
@@ -307,15 +317,16 @@ class SerializedObjectDecoder:
         reader: CatalogBinaryReader,
         offset: int,
     ) -> AssetBundleRequestOptions:
-        reader.seek(offset)
-        hash_offset = reader.read_uint32()
-        bundle_name_offset = reader.read_uint32()
-        crc = reader.read_uint32()
-        bundle_size = reader.read_uint32()
-        common_info_offset = reader.read_uint32()
+        hash_offset, bundle_name_offset, crc, bundle_size, common_info_offset = cast(
+            tuple[int, int, int, int, int],
+            reader.read_struct_from(_ASSET_BUNDLE_REQUEST_OPTIONS, offset),
+        )
 
-        reader.seek(hash_offset)
-        hash_value = Hash128.from_uint32s(*reader.read_four_uint32()).value
+        hash_values = cast(
+            tuple[int, int, int, int],
+            reader.read_struct_from(_HASH128, hash_offset),
+        )
+        hash_value = Hash128.from_uint32s(*hash_values).value
         common_info = reader.read_custom(
             common_info_offset,
             lambda: SerializedObjectDecoder.decode_common_info_binary(reader, common_info_offset),
@@ -331,11 +342,10 @@ class SerializedObjectDecoder:
 
     @staticmethod
     def decode_common_info_binary(reader: CatalogBinaryReader, offset: int) -> CommonInfo:
-        reader.seek(offset)
-        timeout = reader.read_int16()
-        redirect_limit = reader.read_byte()
-        retry_count = reader.read_byte()
-        flags = reader.read_int32()
+        timeout, redirect_limit, retry_count, flags = cast(
+            tuple[int, int, int, int],
+            reader.read_struct_from(_COMMON_INFO, offset),
+        )
         return CommonInfo(
             timeout=timeout,
             redirect_limit=redirect_limit,
