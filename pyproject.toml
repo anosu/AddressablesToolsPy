@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "addressablestools"
-version = "0.2.0"
+version = "1.0.0"
 authors = [{ name = "Jitsu", email = "jitsu233@gmail.com" }]
 description = "Python library for reading Unity Addressables catalog files"
 readme = "README.md"
@@ -27,6 +27,7 @@ addressablestools = ["py.typed"]
 [project.urls]
 "Homepage" = "https://github.com/anosu/AddressablesToolsPy"
 "Bug Reports" = "https://github.com/anosu/AddressablesToolsPy/issues"
+"Changelog" = "https://github.com/anosu/AddressablesToolsPy/blob/main/CHANGELOG.md"
 "Funding" = "https://donate.pypi.org"
 "Source" = "https://github.com/anosu/AddressablesToolsPy"
 

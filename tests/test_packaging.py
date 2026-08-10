@@ -29,10 +29,19 @@ def test_readme_documents_new_package_first() -> None:
     assert "## Custom binary object handling" in readme
 
 
-def test_project_version_is_020() -> None:
+def test_project_version_is_100() -> None:
     pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
 
-    assert 'version = "0.2.0"' in pyproject
+    assert 'version = "1.0.0"' in pyproject
+
+
+def test_changelog_documents_current_release() -> None:
+    changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+    manifest = Path("MANIFEST.in").read_text(encoding="utf-8")
+
+    assert "## [1.0.0] - 2026-08-10" in changelog
+    assert "Binary catalog versions 1 through 3" in changelog
+    assert "include CHANGELOG.md" in manifest
 
 
 def test_project_declares_reproducible_build_backend_and_modern_license() -> None:

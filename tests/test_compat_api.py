@@ -73,4 +73,4 @@ def test_legacy_classes_exports_catalog_binary_reader() -> None:
 
 
 def test_legacy_version_matches_new_package() -> None:
-    assert AddressablesTools.__version__ == "0.2.0"
+    assert AddressablesTools.__version__ == "1.0.0"

@@ -140,6 +140,10 @@ def decode_custom_int32(context: BinaryDecodeContext) -> CustomInt32Value:
 catalog = parse_binary(Path("catalog.bin").read_bytes(), registry=registry)
 ```
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
+
 ## Deprecated API
 
 The old `AddressablesTools` import path is deprecated as of `0.2.0`. It remains available as a thin compatibility layer, but new code should import `addressablestools` directly. Calling `AddressablesTools.parse()`, `AddressablesTools.parse_json()`, or `AddressablesTools.parse_binary()` emits a `DeprecationWarning`.
