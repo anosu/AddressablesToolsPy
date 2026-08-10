@@ -13,15 +13,25 @@ class SerializedType:
 
     @property
     def assembly_short_name(self) -> str:
+        return self.assembly_short_name_for_version(1)
+
+    def assembly_short_name_for_version(self, version: int) -> str:
         if self.assembly_name is None:
             raise ValueError("assembly_name is required")
-        return self.assembly_name.split(",", 1)[0]
+        if version <= 2:
+            return self.assembly_name.split(",", 1)[0]
+        return self.assembly_name
 
     @property
     def match_name(self) -> str:
+        return self.match_name_for_version(1)
+
+    def match_name_for_version(self, version: int) -> str:
         if self.class_name is None:
             raise ValueError("class_name is required")
-        return f"{self.assembly_short_name}; {self.class_name}"
+        if version >= 3 and self.assembly_name is None:
+            return self.class_name
+        return f"{self.assembly_short_name_for_version(version)}; {self.class_name}"
 
 
 @dataclass(frozen=True, slots=True)

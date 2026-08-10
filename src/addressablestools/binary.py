@@ -199,8 +199,8 @@ class CatalogBinaryHeader:
     def read(cls, reader: CatalogBinaryReader) -> CatalogBinaryHeader:
         magic = reader.read_int32()
         version = reader.read_int32()
-        if version not in {1, 2}:
-            raise UnsupportedCatalogVersionError("Only versions 1 and 2 are supported")
+        if not 1 <= version <= 3:
+            raise UnsupportedCatalogVersionError("Only versions 1-3 are supported")
         reader.version = version
         keys_offset = reader.read_uint32()
         id_offset = reader.read_uint32()

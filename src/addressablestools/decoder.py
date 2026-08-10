@@ -22,6 +22,10 @@ class SerializedObjectDecoder:
     LONG_MATCH_NAME = "mscorlib; System.Int64"
     BOOL_MATCH_NAME = "mscorlib; System.Boolean"
     STRING_MATCH_NAME = "mscorlib; System.String"
+    INT_V3_MATCH_NAME = "System.Int32"
+    LONG_V3_MATCH_NAME = "System.Int64"
+    BOOL_V3_MATCH_NAME = "System.Boolean"
+    STRING_V3_MATCH_NAME = "System.String"
     HASH128_MATCH_NAME = "UnityEngine.CoreModule; UnityEngine.Hash128"
     ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME = (
         "Unity.ResourceManager; "
@@ -64,7 +68,7 @@ class SerializedObjectDecoder:
                     type=SerializedType(assembly_name, class_name),
                     json_text=json_text,
                 )
-                if json_object.type.match_name == (
+                if json_object.type.match_name_for_version(1) == (
                     SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME
                 ):
                     return WrappedSerializedObject(
@@ -84,26 +88,26 @@ class SerializedObjectDecoder:
         is_default_object = object_offset == UINT32_MAX
 
         serialized_type = reader.read_serialized_type(type_name_offset)
-        match_name = serialized_type.match_name
+        match_name = serialized_type.match_name_for_version(reader.version)
         patched_match_name = reader.patcher(match_name)
 
         match patched_match_name:
-            case SerializedObjectDecoder.INT_MATCH_NAME:
+            case SerializedObjectDecoder.INT_MATCH_NAME | SerializedObjectDecoder.INT_V3_MATCH_NAME:
                 if is_default_object:
                     return 0
                 reader.seek(object_offset)
                 return reader.read_int32()
-            case SerializedObjectDecoder.LONG_MATCH_NAME:
+            case SerializedObjectDecoder.LONG_MATCH_NAME | SerializedObjectDecoder.LONG_V3_MATCH_NAME:
                 if is_default_object:
                     return 0
                 reader.seek(object_offset)
                 return reader.read_int64()
-            case SerializedObjectDecoder.BOOL_MATCH_NAME:
+            case SerializedObjectDecoder.BOOL_MATCH_NAME | SerializedObjectDecoder.BOOL_V3_MATCH_NAME:
                 if is_default_object:
                     return False
                 reader.seek(object_offset)
                 return reader.read_boolean()
-            case SerializedObjectDecoder.STRING_MATCH_NAME:
+            case SerializedObjectDecoder.STRING_MATCH_NAME | SerializedObjectDecoder.STRING_V3_MATCH_NAME:
                 if is_default_object:
                     return None
                 reader.seek(object_offset)

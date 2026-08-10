@@ -4,6 +4,9 @@ Python library for reading Unity Addressables catalog files from JSON or binary 
 
 Only reading is implemented.
 
+Binary catalog versions 1 through 3 are supported. Version 3 support has not yet been
+tested against a broad catalog corpus.
+
 ## Installation
 
 ```shell

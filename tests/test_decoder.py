@@ -1,14 +1,12 @@
 from io import BytesIO
 import json
 import struct
-from typing import Any, cast
-
 import pytest
 
 from addressablestools.binary import UINT32_MAX, BinaryReader, CatalogBinaryReader
 from addressablestools.decoder import SerializedObjectDecoder
 from addressablestools.exceptions import UnsupportedSerializedObjectError
-from addressablestools.models import AssetBundleRequestOptions, Hash128, TypeReference
+from addressablestools.models import AssetBundleRequestOptions, Hash128, SerializedType, TypeReference
 
 
 def test_decode_v1_ascii_string() -> None:
@@ -72,10 +70,7 @@ def test_decode_v2_calls_handler_when_patcher_returns_none() -> None:
     setattr(
         reader,
         "read_serialized_type",
-        lambda _offset: cast(
-            Any,
-            type("FakeType", (), {"match_name": "Custom; System.Int32"})(),
-        ),
+        lambda _offset: SerializedType("Custom", "System.Int32"),
     )
 
     assert SerializedObjectDecoder.decode_v2(reader, 0) == (UINT32_MAX, True)
@@ -88,11 +83,34 @@ def test_decode_v2_raises_for_unsupported_type() -> None:
     setattr(
         reader,
         "read_serialized_type",
-        lambda _offset: cast(
-            Any,
-            type("FakeType", (), {"match_name": "Custom; Unsupported"})(),
-        ),
+        lambda _offset: SerializedType("Custom", "Unsupported"),
     )
 
     with pytest.raises(UnsupportedSerializedObjectError, match="Custom; Unsupported"):
         SerializedObjectDecoder.decode_v2(reader, 0)
+
+
+@pytest.mark.parametrize(
+    ("class_name", "expected"),
+    [
+        ("System.Int32", 0),
+        ("System.Int64", 0),
+        ("System.Boolean", False),
+        ("System.String", None),
+    ],
+)
+def test_decode_v2_supports_version_3_primitive_types(
+    class_name: str,
+    expected: object,
+) -> None:
+    reader = CatalogBinaryReader(BytesIO(b"\x00" * 32))
+    reader.version = 3
+    setattr(reader, "seek", lambda _offset, _whence=0: None)
+    setattr(reader, "read_uint32", iter([8, UINT32_MAX]).__next__)
+    setattr(
+        reader,
+        "read_serialized_type",
+        lambda _offset: SerializedType(None, class_name),
+    )
+
+    assert SerializedObjectDecoder.decode_v2(reader, 0) == expected

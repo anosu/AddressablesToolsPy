@@ -24,6 +24,14 @@ def test_serialized_type_match_name_uses_short_assembly_name() -> None:
     )
 
 
+def test_serialized_type_match_name_supports_version_3_names() -> None:
+    assembled_type = SerializedType("Unity.ResourceManager", "Example.Type")
+    primitive_type = SerializedType(None, "System.Int32")
+
+    assert assembled_type.match_name_for_version(3) == "Unity.ResourceManager; Example.Type"
+    assert primitive_type.match_name_for_version(3) == "System.Int32"
+
+
 def test_hash128_from_four_uint32_values_matches_existing_byte_order() -> None:
     value = Hash128.from_uint32s(0x11223344, 0x55667788, 0x99AABBCC, 0xDDEEFF00)
 

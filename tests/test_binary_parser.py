@@ -6,7 +6,7 @@ def test_parse_binary_returns_pythonic_catalog(catalog_binary_bytes: bytes) -> N
     catalog = parse_binary(catalog_binary_bytes)
 
     assert isinstance(catalog, ContentCatalogData)
-    assert catalog.version in {1, 2}
+    assert catalog.version in {1, 2, 3}
     assert catalog.resources
 
 

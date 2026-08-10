@@ -37,5 +37,15 @@ def test_binary_header_rejects_unsupported_version() -> None:
     header_bytes = struct.pack("<ii", 0, 99) + b"\x00" * 20
     reader = CatalogBinaryReader(BytesIO(header_bytes))
 
-    with pytest.raises(UnsupportedCatalogVersionError, match="Only versions 1 and 2"):
+    with pytest.raises(UnsupportedCatalogVersionError, match="Only versions 1-3"):
         CatalogBinaryHeader.read(reader)
+
+
+def test_binary_header_accepts_version_3() -> None:
+    header_bytes = struct.pack("<ii6I", 0, 3, 32, 40, 48, 56, 64, 72)
+    reader = CatalogBinaryReader(BytesIO(header_bytes))
+
+    header = CatalogBinaryHeader.read(reader)
+
+    assert header.version == 3
+    assert reader.version == 3
