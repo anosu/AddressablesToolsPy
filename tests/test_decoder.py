@@ -4,9 +4,14 @@ import struct
 import pytest
 
 from addressablestools.binary import UINT32_MAX, BinaryReader, CatalogBinaryReader
-from addressablestools.decoder import SerializedObjectDecoder
+from addressablestools.decoder import BinaryDecodeContext, DecoderRegistry, SerializedObjectDecoder
 from addressablestools.exceptions import UnsupportedSerializedObjectError
-from addressablestools.models import AssetBundleRequestOptions, Hash128, SerializedType, TypeReference
+from addressablestools.models import (
+    AssetBundleRequestOptions,
+    Hash128,
+    SerializedType,
+    TypeReference,
+)
 
 
 def test_decode_v1_ascii_string() -> None:
@@ -27,7 +32,9 @@ def test_decode_v1_type_reference() -> None:
     payload = bytes([SerializedObjectDecoder.ObjectType.TYPE.value])
     payload += bytes([5]) + b"clsid"
 
-    assert SerializedObjectDecoder.decode_v1(BinaryReader(BytesIO(payload))) == TypeReference("clsid")
+    assert SerializedObjectDecoder.decode_v1(BinaryReader(BytesIO(payload))) == TypeReference(
+        "clsid"
+    )
 
 
 def test_asset_bundle_request_options_json_decodes_standard_library_json() -> None:
@@ -57,23 +64,6 @@ def test_asset_bundle_request_options_json_decodes_standard_library_json() -> No
     assert options.bundle_size == 456
     assert options.common_info is not None
     assert options.common_info.version == 3
-
-
-def test_decode_v2_calls_handler_when_patcher_returns_none() -> None:
-    reader = CatalogBinaryReader(
-        BytesIO(b"\x00" * 32),
-        patcher=lambda _: None,
-        handler=lambda _reader, offset, is_default: (offset, is_default),
-    )
-    setattr(reader, "seek", lambda _offset, _whence=0: None)
-    setattr(reader, "read_uint32", iter([8, UINT32_MAX]).__next__)
-    setattr(
-        reader,
-        "read_serialized_type",
-        lambda _offset: SerializedType("Custom", "System.Int32"),
-    )
-
-    assert SerializedObjectDecoder.decode_v2(reader, 0) == (UINT32_MAX, True)
 
 
 def test_decode_v2_raises_for_unsupported_type() -> None:
@@ -114,3 +104,46 @@ def test_decode_v2_supports_version_3_primitive_types(
     )
 
     assert SerializedObjectDecoder.decode_v2(reader, 0) == expected
+
+
+def test_decode_v2_uses_registered_custom_decoder() -> None:
+    reader = CatalogBinaryReader(BytesIO(b"\x00" * 32))
+    reader.version = 3
+    setattr(reader, "seek", lambda _offset, _whence=0: None)
+    setattr(reader, "read_uint32", iter([8, 12]).__next__)
+    setattr(
+        reader,
+        "read_serialized_type",
+        lambda _offset: SerializedType("Custom.Assembly", "Custom.Metadata"),
+    )
+    registry = DecoderRegistry()
+
+    @registry.register("Custom.Assembly; Custom.Metadata")
+    def decode_custom(context: BinaryDecodeContext) -> tuple[str | None, int, bool]:
+        return (
+            context.serialized_type.class_name,
+            context.offset,
+            context.is_default,
+        )
+
+    assert SerializedObjectDecoder.decode_v2(reader, 0, registry=registry) == (
+        "Custom.Metadata",
+        12,
+        False,
+    )
+
+
+def test_decoder_registry_aliases_custom_type_to_builtin() -> None:
+    reader = CatalogBinaryReader(BytesIO(b"\x00" * 32))
+    reader.version = 3
+    setattr(reader, "seek", lambda _offset, _whence=0: None)
+    setattr(reader, "read_uint32", iter([8, UINT32_MAX]).__next__)
+    setattr(
+        reader,
+        "read_serialized_type",
+        lambda _offset: SerializedType("Custom.Assembly", "Custom.Int32"),
+    )
+    registry = DecoderRegistry()
+    registry.alias("Custom.Assembly; Custom.Int32", SerializedObjectDecoder.INT_V3_MATCH_NAME)
+
+    assert SerializedObjectDecoder.decode_v2(reader, 0, registry=registry) == 0

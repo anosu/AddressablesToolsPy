@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 import json
+from typing import TypeVar, cast, overload
 
 from addressablestools.binary import UINT32_MAX, BinaryReader, CatalogBinaryReader
 from addressablestools.exceptions import UnsupportedSerializedObjectError
@@ -13,8 +16,88 @@ from addressablestools.models import (
     Hash128,
     SerializedType,
     TypeReference,
-    WrappedSerializedObject,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class BinaryDecodeContext:
+    """Context supplied to a registered binary object decoder.
+
+    Attributes:
+        reader: Reader positioned by the decoder as needed.
+        offset: Offset of the serialized object payload.
+        is_default: Whether the catalog stores the type's default value.
+        serialized_type: Exact Unity type identity read from the catalog.
+    """
+
+    reader: CatalogBinaryReader
+    offset: int
+    is_default: bool
+    serialized_type: SerializedType
+
+
+T = TypeVar("T")
+type ObjectDecoder[T] = Callable[[BinaryDecodeContext], T]
+
+
+class DecoderRegistry:
+    """Per-parse registry for custom binary object decoders and type aliases.
+
+    Registries are intentionally independent rather than global, so customizations
+    cannot leak between catalog parses or tests.
+    """
+
+    def __init__(self) -> None:
+        self._decoders: dict[str, ObjectDecoder[object]] = {}
+        self._aliases: dict[str, str] = {}
+
+    @overload
+    def register(self, match_name: str, decoder: ObjectDecoder[T], /) -> ObjectDecoder[T]: ...
+
+    @overload
+    def register(
+        self,
+        match_name: str,
+        decoder: None = None,
+        /,
+    ) -> Callable[[ObjectDecoder[T]], ObjectDecoder[T]]: ...
+
+    def register(
+        self,
+        match_name: str,
+        decoder: ObjectDecoder[T] | None = None,
+        /,
+    ) -> ObjectDecoder[T] | Callable[[ObjectDecoder[T]], ObjectDecoder[T]]:
+        """Register a decoder directly or use the result as a decorator.
+
+        Args:
+            match_name: Unity serialized type match name.
+            decoder: Optional decoder function. Omit it for decorator usage.
+        """
+
+        def add(registered: ObjectDecoder[T]) -> ObjectDecoder[T]:
+            self._decoders[match_name] = cast(ObjectDecoder[object], registered)
+            return registered
+
+        return add if decoder is None else add(decoder)
+
+    def alias(self, match_name: str, target: str, /) -> None:
+        """Map one serialized type match name to another registered or built-in type."""
+
+        self._aliases[match_name] = target
+
+    def _resolve(self, match_name: str, /) -> str:
+        resolved = match_name
+        visited: set[str] = set()
+        while resolved in self._aliases:
+            if resolved in visited:
+                raise ValueError(f"decoder alias cycle contains {resolved!r}")
+            visited.add(resolved)
+            resolved = self._aliases[resolved]
+        return resolved
+
+    def _get(self, match_name: str, /) -> ObjectDecoder[object] | None:
+        return self._decoders.get(match_name)
 
 
 class SerializedObjectDecoder:
@@ -44,22 +127,28 @@ class SerializedObjectDecoder:
 
     @staticmethod
     def decode_v1(reader: BinaryReader) -> object:
+        """Decode a version 1 serialized value without returning type metadata."""
+
+        return SerializedObjectDecoder._decode_v1(reader)[0]
+
+    @staticmethod
+    def _decode_v1(reader: BinaryReader) -> tuple[object, SerializedType | None]:
         object_type = SerializedObjectDecoder.ObjectType(reader.read_byte())
         match object_type:
             case SerializedObjectDecoder.ObjectType.ASCII_STRING:
-                return SerializedObjectDecoder.read_string4(reader)
+                return SerializedObjectDecoder.read_string4(reader), None
             case SerializedObjectDecoder.ObjectType.UNICODE_STRING:
-                return SerializedObjectDecoder.read_string4_unicode(reader)
+                return SerializedObjectDecoder.read_string4_unicode(reader), None
             case SerializedObjectDecoder.ObjectType.UINT16:
-                return reader.read_uint16()
+                return reader.read_uint16(), None
             case SerializedObjectDecoder.ObjectType.UINT32:
-                return reader.read_uint32()
+                return reader.read_uint32(), None
             case SerializedObjectDecoder.ObjectType.INT32:
-                return reader.read_int32()
+                return reader.read_int32(), None
             case SerializedObjectDecoder.ObjectType.HASH128:
-                return Hash128(SerializedObjectDecoder.read_string1(reader))
+                return Hash128(SerializedObjectDecoder.read_string1(reader)), None
             case SerializedObjectDecoder.ObjectType.TYPE:
-                return TypeReference(SerializedObjectDecoder.read_string1(reader))
+                return TypeReference(SerializedObjectDecoder.read_string1(reader)), None
             case SerializedObjectDecoder.ObjectType.JSON_OBJECT:
                 assembly_name = SerializedObjectDecoder.read_string1(reader)
                 class_name = SerializedObjectDecoder.read_string1(reader)
@@ -71,16 +160,30 @@ class SerializedObjectDecoder:
                 if json_object.type.match_name_for_version(1) == (
                     SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME
                 ):
-                    return WrappedSerializedObject(
-                        json_object.type,
+                    return (
                         SerializedObjectDecoder.decode_asset_bundle_request_options_json(json_text),
+                        json_object.type,
                     )
-                return json_object
+                return json_object, json_object.type
 
     @staticmethod
-    def decode_v2(reader: CatalogBinaryReader, offset: int) -> object:
+    def decode_v2(
+        reader: CatalogBinaryReader,
+        offset: int,
+        registry: DecoderRegistry | None = None,
+    ) -> object:
+        """Decode a binary catalog value without returning type metadata."""
+
+        return SerializedObjectDecoder._decode_v2(reader, offset, registry)[0]
+
+    @staticmethod
+    def _decode_v2(
+        reader: CatalogBinaryReader,
+        offset: int,
+        registry: DecoderRegistry | None = None,
+    ) -> tuple[object, SerializedType | None]:
         if offset == UINT32_MAX:
-            return None
+            return None, None
 
         reader.seek(offset)
         type_name_offset = reader.read_uint32()
@@ -89,39 +192,55 @@ class SerializedObjectDecoder:
 
         serialized_type = reader.read_serialized_type(type_name_offset)
         match_name = serialized_type.match_name_for_version(reader.version)
-        patched_match_name = reader.patcher(match_name)
+        resolved_match_name = registry._resolve(match_name) if registry is not None else match_name
+        context = BinaryDecodeContext(
+            reader=reader,
+            offset=object_offset,
+            is_default=is_default_object,
+            serialized_type=serialized_type,
+        )
+        custom_decoder = registry._get(resolved_match_name) if registry is not None else None
+        if custom_decoder is not None:
+            return custom_decoder(context), serialized_type
 
-        match patched_match_name:
+        match resolved_match_name:
             case SerializedObjectDecoder.INT_MATCH_NAME | SerializedObjectDecoder.INT_V3_MATCH_NAME:
                 if is_default_object:
-                    return 0
+                    return 0, serialized_type
                 reader.seek(object_offset)
-                return reader.read_int32()
-            case SerializedObjectDecoder.LONG_MATCH_NAME | SerializedObjectDecoder.LONG_V3_MATCH_NAME:
+                return reader.read_int32(), serialized_type
+            case (
+                SerializedObjectDecoder.LONG_MATCH_NAME | SerializedObjectDecoder.LONG_V3_MATCH_NAME
+            ):
                 if is_default_object:
-                    return 0
+                    return 0, serialized_type
                 reader.seek(object_offset)
-                return reader.read_int64()
-            case SerializedObjectDecoder.BOOL_MATCH_NAME | SerializedObjectDecoder.BOOL_V3_MATCH_NAME:
+                return reader.read_int64(), serialized_type
+            case (
+                SerializedObjectDecoder.BOOL_MATCH_NAME | SerializedObjectDecoder.BOOL_V3_MATCH_NAME
+            ):
                 if is_default_object:
-                    return False
+                    return False, serialized_type
                 reader.seek(object_offset)
-                return reader.read_boolean()
-            case SerializedObjectDecoder.STRING_MATCH_NAME | SerializedObjectDecoder.STRING_V3_MATCH_NAME:
+                return reader.read_boolean(), serialized_type
+            case (
+                SerializedObjectDecoder.STRING_MATCH_NAME
+                | SerializedObjectDecoder.STRING_V3_MATCH_NAME
+            ):
                 if is_default_object:
-                    return None
+                    return None, serialized_type
                 reader.seek(object_offset)
                 string_offset = reader.read_uint32()
                 separator = reader.read_char()
-                return reader.read_encoded_string(string_offset, separator)
+                return reader.read_encoded_string(string_offset, separator), serialized_type
             case SerializedObjectDecoder.HASH128_MATCH_NAME:
                 if is_default_object:
-                    return None
+                    return None, serialized_type
                 reader.seek(object_offset)
-                return Hash128.from_uint32s(*reader.read_four_uint32())
+                return Hash128.from_uint32s(*reader.read_four_uint32()), serialized_type
             case SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME:
                 if is_default_object:
-                    return None
+                    return None, serialized_type
                 options = reader.read_custom(
                     object_offset,
                     lambda: SerializedObjectDecoder.decode_asset_bundle_request_options_binary(
@@ -129,9 +248,7 @@ class SerializedObjectDecoder:
                         object_offset,
                     ),
                 )
-                return WrappedSerializedObject(serialized_type, options)
-            case None:
-                return reader.handler(reader, object_offset, is_default_object)
+                return options, serialized_type
             case _:
                 raise UnsupportedSerializedObjectError(f"Unsupported object type: {match_name}")
 
@@ -250,4 +367,9 @@ class SerializedObjectDecoder:
         return reader.read_bytes(length).decode("utf-16le")
 
 
-__all__ = ["SerializedObjectDecoder"]
+__all__ = [
+    "BinaryDecodeContext",
+    "DecoderRegistry",
+    "ObjectDecoder",
+    "SerializedObjectDecoder",
+]

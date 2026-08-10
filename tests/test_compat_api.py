@@ -4,6 +4,7 @@ from AddressablesTools.classes import (
     AssetBundleRequestOptions,
     CatalogBinaryReader,
     ContentCatalogData,
+    WrappedSerializedObject,
 )
 
 
@@ -26,6 +27,8 @@ def test_legacy_parse_json_returns_pascal_case_bundle_data(catalog_json_text: st
             location = locations[0]
             assert location.InternalId
             assert location.ProviderId
+            assert isinstance(location.Data, WrappedSerializedObject)
+            assert location.Data.Type.ClassName.endswith("AssetBundleRequestOptions")
             assert isinstance(location.Data.Object, AssetBundleRequestOptions)
             assert location.Data.Object.Crc > 0
             assert location.Data.Object.Hash
@@ -39,6 +42,20 @@ def test_legacy_parse_binary_returns_pascal_case_catalog(catalog_binary_bytes: b
 
     assert isinstance(catalog, ContentCatalogData)
     assert catalog.Resources["Anim/Network"][0].PrimaryKey == "Anim/Network"
+
+
+def test_legacy_parse_binary_keeps_patcher_callback(catalog_binary_bytes: bytes) -> None:
+    calls: list[str] = []
+
+    def patcher(match_name: str) -> str:
+        calls.append(match_name)
+        return match_name
+
+    with pytest.deprecated_call(match="AddressablesTools.parse_binary is deprecated"):
+        catalog = AddressablesTools.parse_binary(catalog_binary_bytes, patcher=patcher)
+
+    assert catalog.Resources
+    assert calls
 
 
 def test_legacy_parse_dispatches_to_new_parser(

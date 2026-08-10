@@ -1,3 +1,5 @@
+import inspect
+
 from addressablestools.models import (
     AssetBundleRequestOptions,
     AssetLoadMode,
@@ -6,8 +8,6 @@ from addressablestools.models import (
     ObjectInitializationData,
     ResourceLocation,
     SerializedType,
-    TypeReference,
-    WrappedSerializedObject,
 )
 
 
@@ -56,6 +56,7 @@ def test_resource_location_uses_pythonic_fields() -> None:
     assert location.provider_id == "provider"
     assert location.primary_key == "primary"
     assert location.type == resource_type
+    assert "_data_type" not in inspect.signature(ResourceLocation).parameters
 
 
 def test_asset_bundle_request_options_defaults_are_typed() -> None:
@@ -66,14 +67,6 @@ def test_asset_bundle_request_options_defaults_are_typed() -> None:
     assert options.bundle_name is None
     assert options.bundle_size == 0
     assert options.common_info is None
-
-
-def test_wrapped_serialized_object_keeps_type_and_object() -> None:
-    serialized_type = SerializedType("Assembly, Version=1.0.0.0", "ClassName")
-    wrapped = WrappedSerializedObject(type=serialized_type, object=TypeReference("clsid"))
-
-    assert wrapped.type is serialized_type
-    assert wrapped.object == TypeReference("clsid")
 
 
 def test_catalog_related_models_are_importable() -> None:

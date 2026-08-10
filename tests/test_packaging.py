@@ -33,3 +33,12 @@ def test_project_version_is_020() -> None:
     pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
 
     assert 'version = "0.2.0"' in pyproject
+
+
+def test_project_declares_reproducible_build_backend_and_modern_license() -> None:
+    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert "[build-system]" in pyproject
+    assert 'build-backend = "setuptools.build_meta"' in pyproject
+    assert 'license = "MIT"' in pyproject
+    assert 'license-files = ["LICENSE"]' in pyproject

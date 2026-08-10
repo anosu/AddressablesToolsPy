@@ -18,8 +18,7 @@ pip install addressablestools
 ```python
 from pathlib import Path
 
-from addressablestools import parse_json
-from addressablestools.models import AssetBundleRequestOptions, WrappedSerializedObject
+from addressablestools import AssetBundleRequestOptions, parse_json
 
 
 data = Path("tests/samples/catalog.json").read_text(encoding="utf-8")
@@ -29,15 +28,8 @@ for key, locations in catalog.resources.items():
     if not isinstance(key, str) or not key.endswith(".bundle"):
         continue
 
-    resource_data = locations[0].data
-    if isinstance(resource_data, WrappedSerializedObject) and isinstance(
-        resource_data.object,
-        AssetBundleRequestOptions,
-    ):
-        print(
-            f"Bundle {key}, Crc: {resource_data.object.crc}, "
-            f"Hash: {resource_data.object.hash}"
-        )
+    options = locations[0].data_as(AssetBundleRequestOptions)
+    print(f"Bundle {key}, Crc: {options.crc}, Hash: {options.hash}")
 ```
 
 ## Parse binary catalogs
@@ -86,61 +78,66 @@ from addressablestools import parse_json
 
 catalog = parse_json(Path("tests/samples/catalog.json").read_text(encoding="utf-8"))
 asset_key = "Assets/Paripari/AddressableAssets/VFX Texture Assets/ParticleTextures/sparkle.png"
-asset_location = catalog.resources[asset_key][0]
+asset_location = catalog.locate(asset_key)[0]
 
 print(asset_location.primary_key)
 print(asset_location.internal_id)
 print(asset_location.provider_id)
 
 if asset_location.dependency_key is not None:
-    dependency_location = catalog.resources[asset_location.dependency_key][0]
+    dependency_location = catalog.locate(asset_location.dependency_key)[0]
     print(dependency_location.primary_key)
     print(dependency_location.internal_id)
 ```
 
 ## Custom binary object handling
 
-Binary catalogs may contain custom serialized object types. Use a patcher to remap a custom match name to a supported built-in match name, or return `None` to delegate parsing to a handler.
+Binary catalogs may contain custom serialized object types. A decoder registry can alias a
+custom type to a supported built-in type or register a decoder function for that type.
 
 ```python
 from pathlib import Path
 
-from addressablestools import parse_binary
+from addressablestools import DecoderRegistry, parse_binary
 from addressablestools.decoder import SerializedObjectDecoder
 
 
-def patcher(match_name: str) -> str | None:
-    if match_name == "Custom.Assembly; Custom.AssetBundleRequestOptions":
-        return SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME
-    return match_name
+registry = DecoderRegistry()
+registry.alias(
+    "Custom.Assembly; Custom.AssetBundleRequestOptions",
+    SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME,
+)
 
 
-catalog = parse_binary(Path("catalog.bin").read_bytes(), patcher=patcher)
+catalog = parse_binary(Path("catalog.bin").read_bytes(), registry=registry)
 ```
 
-You can also let a handler parse a custom object directly.
+Decoder functions receive the exact serialized type together with the object offset.
 
 ```python
+from dataclasses import dataclass
 from pathlib import Path
 
-from addressablestools import parse_binary
-from addressablestools.binary import CatalogBinaryReader
+from addressablestools import BinaryDecodeContext, DecoderRegistry, parse_binary
 
 
-def patcher(match_name: str) -> str | None:
-    if match_name == "Custom.Assembly; Custom.Int32Value":
-        return None
-    return match_name
+@dataclass(frozen=True)
+class CustomInt32Value:
+    value: int
 
 
-def handler(reader: CatalogBinaryReader, offset: int, is_default: bool) -> object:
-    if is_default:
-        return 0
-    reader.seek(offset)
-    return reader.read_int32()
+registry = DecoderRegistry()
 
 
-catalog = parse_binary(Path("catalog.bin").read_bytes(), patcher=patcher, handler=handler)
+@registry.register("Custom.Assembly; Custom.Int32Value")
+def decode_custom_int32(context: BinaryDecodeContext) -> CustomInt32Value:
+    if context.is_default:
+        return CustomInt32Value(0)
+    context.reader.seek(context.offset)
+    return CustomInt32Value(context.reader.read_int32())
+
+
+catalog = parse_binary(Path("catalog.bin").read_bytes(), registry=registry)
 ```
 
 ## Deprecated API

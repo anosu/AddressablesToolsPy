@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import sys
 import warnings
+from collections.abc import Callable
+from io import BytesIO
 from types import ModuleType
 from typing import Any, cast
 
 import addressablestools
 from addressablestools.binary import CatalogBinaryReader
-from addressablestools.decoder import SerializedObjectDecoder
+from addressablestools.decoder import (
+    BinaryDecodeContext,
+    DecoderRegistry,
+    SerializedObjectDecoder,
+)
 from addressablestools.models import (
     AssetBundleRequestOptions,
     ClassJsonObject,
@@ -18,9 +24,30 @@ from addressablestools.models import (
     ResourceLocation,
     SerializedType,
     TypeReference,
-    WrappedSerializedObject,
 )
-from addressablestools.parser import Handler, Patcher
+
+type Patcher = Callable[[str], str | None]
+type Handler = Callable[[CatalogBinaryReader, int, bool], object]
+
+_LEGACY_HANDLER_MATCH_NAME = "\0AddressablesTools.legacy-handler"
+
+
+class _LegacyDecoderRegistry(DecoderRegistry):
+    def __init__(self, patcher: Patcher | None, handler: Handler | None) -> None:
+        super().__init__()
+        self._patcher = patcher if patcher is not None else lambda match_name: match_name
+        self._handler = handler if handler is not None else lambda _reader, _offset, _default: None
+        self.register(_LEGACY_HANDLER_MATCH_NAME, self._decode_legacy)
+
+    def _resolve(self, match_name: str, /) -> str:
+        resolved = self._patcher(match_name)
+        if resolved is None:
+            return _LEGACY_HANDLER_MATCH_NAME
+        return super()._resolve(resolved)
+
+    def _decode_legacy(self, context: BinaryDecodeContext) -> object:
+        return self._handler(context.reader, context.offset, context.is_default)
+
 
 __path__: list[str] = []
 __version__ = addressablestools.__version__
@@ -169,15 +196,24 @@ class CompatAssetBundleRequestOptions(_CompatValue):
 
 
 class CompatWrappedSerializedObject(_CompatValue):
-    _value: WrappedSerializedObject[Any]
+    def __init__(self, serialized_type: object, obj: object) -> None:
+        if isinstance(serialized_type, CompatSerializedType):
+            serialized_type = serialized_type._value
+        if not isinstance(serialized_type, SerializedType):
+            raise TypeError("type must be a SerializedType")
+        if isinstance(obj, _CompatValue):
+            obj = obj._value
+        self._type = serialized_type
+        self._object = obj
+        super().__init__((serialized_type, obj))
 
     @property
     def Type(self) -> object:
-        return wrap_legacy(self._value.type)
+        return wrap_legacy(self._type)
 
     @property
     def Object(self) -> object:
-        return wrap_legacy(self._value.object)
+        return wrap_legacy(self._object)
 
 
 class CompatResourceLocation(_CompatValue):
@@ -201,6 +237,10 @@ class CompatResourceLocation(_CompatValue):
 
     @property
     def Data(self) -> object:
+        if isinstance(self._value.data, AssetBundleRequestOptions):
+            data_type = self._value._data_type
+            if data_type is not None:
+                return CompatWrappedSerializedObject(data_type, self._value.data)
         return wrap_legacy(self._value.data)
 
     @property
@@ -282,8 +322,6 @@ def wrap_legacy(value: object) -> object:
         return CompatCatalog(value)
     if isinstance(value, ResourceLocation):
         return CompatResourceLocation(value)
-    if isinstance(value, WrappedSerializedObject):
-        return CompatWrappedSerializedObject(value)
     if isinstance(value, AssetBundleRequestOptions):
         return CompatAssetBundleRequestOptions(value)
     if isinstance(value, CommonInfo):
@@ -311,9 +349,16 @@ def parse(
     handler: Handler | None = None,
 ) -> CompatCatalog:
     _warn_deprecated("AddressablesTools.parse")
+    if isinstance(data, str):
+        parsed = addressablestools.parse_json(data)
+    else:
+        parsed = addressablestools.parse_binary(
+            data,
+            registry=_LegacyDecoderRegistry(patcher, handler),
+        )
     return cast(
         CompatCatalog,
-        wrap_legacy(addressablestools.parse(data, patcher=patcher, handler=handler)),
+        wrap_legacy(parsed),
     )
 
 
@@ -330,7 +375,12 @@ def parse_binary(
     _warn_deprecated("AddressablesTools.parse_binary")
     return cast(
         CompatCatalog,
-        wrap_legacy(addressablestools.parse_binary(data, patcher=patcher, handler=handler)),
+        wrap_legacy(
+            addressablestools.parse_binary(
+                data,
+                registry=_LegacyDecoderRegistry(patcher, handler),
+            )
+        ),
     )
 
 
@@ -349,16 +399,73 @@ class _Parser:
 
 Parser = _Parser
 
-SerializedObjectDecoder.INT_MATCHNAME = SerializedObjectDecoder.INT_MATCH_NAME
-SerializedObjectDecoder.LONG_MATCHNAME = SerializedObjectDecoder.LONG_MATCH_NAME
-SerializedObjectDecoder.BOOL_MATCHNAME = SerializedObjectDecoder.BOOL_MATCH_NAME
-SerializedObjectDecoder.STRING_MATCHNAME = SerializedObjectDecoder.STRING_MATCH_NAME
-SerializedObjectDecoder.HASH128_MATCHNAME = SerializedObjectDecoder.HASH128_MATCH_NAME
-SerializedObjectDecoder.ABRO_MATCHNAME = (
-    SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME
-)
 
-classes = ModuleType("AddressablesTools.classes")
+class CompatCatalogBinaryReader(CatalogBinaryReader):
+    def __init__(
+        self,
+        stream: BytesIO,
+        patcher: Patcher | None = None,
+        handler: Handler | None = None,
+    ) -> None:
+        super().__init__(stream)
+        self._patcher = patcher
+        self._handler = handler
+
+    @property
+    def Version(self) -> int:
+        return self.version
+
+    @Version.setter
+    def Version(self, value: int) -> None:
+        self.version = value
+
+
+class CompatSerializedObjectDecoder:
+    INT_MATCHNAME = SerializedObjectDecoder.INT_MATCH_NAME
+    LONG_MATCHNAME = SerializedObjectDecoder.LONG_MATCH_NAME
+    BOOL_MATCHNAME = SerializedObjectDecoder.BOOL_MATCH_NAME
+    STRING_MATCHNAME = SerializedObjectDecoder.STRING_MATCH_NAME
+    HASH128_MATCHNAME = SerializedObjectDecoder.HASH128_MATCH_NAME
+    ABRO_MATCHNAME = SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME
+
+    @staticmethod
+    def decode_v1(reader: object) -> object:
+        value, serialized_type = SerializedObjectDecoder._decode_v1(cast(Any, reader))
+        if isinstance(value, AssetBundleRequestOptions) and serialized_type is not None:
+            return CompatWrappedSerializedObject(serialized_type, value)
+        return wrap_legacy(value)
+
+    @staticmethod
+    def decode_v2(
+        reader: CatalogBinaryReader,
+        offset: int,
+        patcher: Patcher | None = None,
+        handler: Handler | None = None,
+    ) -> object:
+        if isinstance(reader, CompatCatalogBinaryReader):
+            patcher = patcher if patcher is not None else reader._patcher
+            handler = handler if handler is not None else reader._handler
+        value, serialized_type = SerializedObjectDecoder._decode_v2(
+            reader,
+            offset,
+            _LegacyDecoderRegistry(patcher, handler),
+        )
+        if isinstance(value, AssetBundleRequestOptions) and serialized_type is not None:
+            return CompatWrappedSerializedObject(serialized_type, value)
+        return wrap_legacy(value)
+
+    read_string1 = staticmethod(SerializedObjectDecoder.read_string1)
+    read_string4 = staticmethod(SerializedObjectDecoder.read_string4)
+    read_string4_unicode = staticmethod(SerializedObjectDecoder.read_string4_unicode)
+
+
+CompatCatalogBinaryReader.__name__ = "CatalogBinaryReader"
+CompatCatalogBinaryReader.__qualname__ = "CatalogBinaryReader"
+CompatSerializedObjectDecoder.__name__ = "SerializedObjectDecoder"
+CompatSerializedObjectDecoder.__qualname__ = "SerializedObjectDecoder"
+
+
+classes = cast(Any, ModuleType("AddressablesTools.classes"))
 classes.WrappedSerializedObject = CompatWrappedSerializedObject
 classes.ContentCatalogData = CompatCatalog
 classes.ClassJsonObject = CompatClassJsonObject
@@ -368,8 +475,8 @@ classes.ObjectInitializationData = CompatObjectInitializationData
 classes.TypeReference = CompatTypeReference
 classes.Hash128 = CompatHash128
 classes.AssetBundleRequestOptions = CompatAssetBundleRequestOptions
-classes.SerializedObjectDecoder = SerializedObjectDecoder
-classes.CatalogBinaryReader = CatalogBinaryReader
+classes.SerializedObjectDecoder = CompatSerializedObjectDecoder
+classes.CatalogBinaryReader = CompatCatalogBinaryReader
 classes.__all__ = [
     "WrappedSerializedObject",
     "ContentCatalogData",

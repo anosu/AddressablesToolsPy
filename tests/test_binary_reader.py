@@ -19,11 +19,26 @@ def test_binary_reader_raises_binary_read_error_on_short_read() -> None:
         reader.read_int32()
 
 
+def test_binary_reader_rejects_negative_read_size() -> None:
+    reader = BinaryReader(BytesIO(b"data"))
+
+    with pytest.raises(BinaryReadError, match="non-negative"):
+        reader.read_exact(-1)
+
+
 def test_catalog_reader_rejects_invalid_offset_array_byte_size() -> None:
     data = struct.pack("<i", 3) + b"abc"
     reader = CatalogBinaryReader(BytesIO(data))
 
     with pytest.raises(BinaryReadError, match="multiple of 4"):
+        reader.read_offset_array(4)
+
+
+def test_catalog_reader_rejects_negative_offset_array_byte_size() -> None:
+    data = struct.pack("<i", -4)
+    reader = CatalogBinaryReader(BytesIO(data))
+
+    with pytest.raises(BinaryReadError, match="non-negative"):
         reader.read_offset_array(4)
 
 
@@ -49,3 +64,25 @@ def test_binary_header_accepts_version_3() -> None:
 
     assert header.version == 3
     assert reader.version == 3
+
+
+def test_dynamic_string_cache_accounts_for_separator() -> None:
+    data = (
+        struct.pack("<IIIIi", 20, 8, 28, UINT32_MAX, 1)
+        + b"a\x00\x00\x00"
+        + struct.pack("<i", 1)
+        + b"b"
+    )
+    reader = CatalogBinaryReader(BytesIO(data))
+    encoded_offset = 0x40000000
+
+    assert reader.read_encoded_string(encoded_offset, "/") == "a/b"
+    assert reader.read_encoded_string(encoded_offset, ".") == "a.b"
+
+
+def test_dynamic_string_rejects_cyclic_part_chain() -> None:
+    data = struct.pack("<II", 12, 0) + struct.pack("<i", 0)
+    reader = CatalogBinaryReader(BytesIO(data))
+
+    with pytest.raises(BinaryReadError, match="cycle"):
+        reader.read_encoded_string(0x40000000, "/")

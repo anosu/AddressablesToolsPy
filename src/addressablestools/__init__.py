@@ -1,10 +1,21 @@
-from addressablestools.parser import Handler, Patcher, parse, parse_binary, parse_json
+from addressablestools.decoder import BinaryDecodeContext, DecoderRegistry
+from addressablestools.models import (
+    AssetBundleRequestOptions,
+    ContentCatalogData,
+    ResourceLocation,
+    SerializedType,
+)
+from addressablestools.parser import parse, parse_binary, parse_json
 
 __version__ = "0.2.0"
 
 __all__ = [
-    "Handler",
-    "Patcher",
+    "AssetBundleRequestOptions",
+    "BinaryDecodeContext",
+    "ContentCatalogData",
+    "DecoderRegistry",
+    "ResourceLocation",
+    "SerializedType",
     "parse",
     "parse_binary",
     "parse_json",

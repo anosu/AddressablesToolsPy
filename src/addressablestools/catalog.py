@@ -2,20 +2,21 @@ from __future__ import annotations
 
 from base64 import b64decode
 from dataclasses import dataclass
+from functools import partial
 from io import BytesIO
 import json
-from typing import Mapping, cast
+from struct import error as StructError
+from typing import Mapping, Sequence, TypeVar, cast
 
 from addressablestools.binary import BinaryReader, CatalogBinaryHeader, CatalogBinaryReader
-from addressablestools.decoder import SerializedObjectDecoder
-from addressablestools.exceptions import CatalogParseError
+from addressablestools.decoder import DecoderRegistry, SerializedObjectDecoder
+from addressablestools.exceptions import BinaryReadError, CatalogParseError
 from addressablestools.models import (
     ContentCatalogData,
     ObjectInitializationData,
     ResourceLocation,
     SerializedType,
 )
-from addressablestools.parser import Handler, Patcher
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,44 +33,49 @@ def parse_json_catalog(data: str) -> ContentCatalogData:
     if not isinstance(raw, dict):
         raise CatalogParseError("catalog JSON root must be an object")
 
-    catalog = ContentCatalogData(
-        locator_id=_optional_str(raw.get("m_LocatorId")),
-        build_result_hash=_optional_str(raw.get("m_BuildResultHash")),
-        instance_provider_data=_object_initialization_data_from_json(
-            _mapping(raw["m_InstanceProviderData"], "m_InstanceProviderData")
-        ),
-        scene_provider_data=_object_initialization_data_from_json(
-            _mapping(raw["m_SceneProviderData"], "m_SceneProviderData")
-        ),
-        resource_provider_data=[
-            _object_initialization_data_from_json(_mapping(item, "m_ResourceProviderData item"))
-            for item in _list(raw["m_ResourceProviderData"], "m_ResourceProviderData")
-        ],
-        provider_ids=[str(item) for item in _list(raw["m_ProviderIds"], "m_ProviderIds")],
-        internal_ids=[str(item) for item in _list(raw["m_InternalIds"], "m_InternalIds")],
-        keys=(
-            [str(item) for item in _list(raw["m_Keys"], "m_Keys")]
-            if raw.get("m_Keys") is not None
-            else None
-        ),
-        resource_types=[
-            _serialized_type_from_json(_mapping(item, "m_resourceTypes item"))
-            for item in _list(raw["m_resourceTypes"], "m_resourceTypes")
-        ],
-        internal_id_prefixes=[
-            str(item) for item in _list(raw.get("m_InternalIdPrefixes", []), "m_InternalIdPrefixes")
-        ],
-    )
-    catalog.resources = _decode_json_resources(catalog, raw)
-    return catalog
+    try:
+        catalog = ContentCatalogData(
+            locator_id=_optional_str(raw.get("m_LocatorId")),
+            build_result_hash=_optional_str(raw.get("m_BuildResultHash")),
+            instance_provider_data=_object_initialization_data_from_json(
+                _mapping(raw["m_InstanceProviderData"], "m_InstanceProviderData")
+            ),
+            scene_provider_data=_object_initialization_data_from_json(
+                _mapping(raw["m_SceneProviderData"], "m_SceneProviderData")
+            ),
+            resource_provider_data=[
+                _object_initialization_data_from_json(_mapping(item, "m_ResourceProviderData item"))
+                for item in _list(raw["m_ResourceProviderData"], "m_ResourceProviderData")
+            ],
+            provider_ids=[str(item) for item in _list(raw["m_ProviderIds"], "m_ProviderIds")],
+            internal_ids=[str(item) for item in _list(raw["m_InternalIds"], "m_InternalIds")],
+            keys=(
+                [str(item) for item in _list(raw["m_Keys"], "m_Keys")]
+                if raw.get("m_Keys") is not None
+                else None
+            ),
+            resource_types=[
+                _serialized_type_from_json(_mapping(item, "m_resourceTypes item"))
+                for item in _list(raw["m_resourceTypes"], "m_resourceTypes")
+            ],
+            internal_id_prefixes=[
+                str(item)
+                for item in _list(raw.get("m_InternalIdPrefixes", []), "m_InternalIdPrefixes")
+            ],
+        )
+        catalog.resources = _decode_json_resources(catalog, raw)
+        return catalog
+    except CatalogParseError:
+        raise
+    except (KeyError, IndexError, TypeError, ValueError, OverflowError, StructError) as exc:
+        raise CatalogParseError(f"invalid catalog JSON data: {exc}") from exc
 
 
 def parse_binary_catalog(
     data: bytes,
-    patcher: Patcher | None = None,
-    handler: Handler | None = None,
+    registry: DecoderRegistry | None = None,
 ) -> ContentCatalogData:
-    reader = CatalogBinaryReader(BytesIO(data), patcher=patcher, handler=handler)
+    reader = CatalogBinaryReader(BytesIO(data))
     header = CatalogBinaryHeader.read(reader)
 
     resource_provider_offsets = reader.read_offset_array(header.init_objects_array_offset)
@@ -90,7 +96,7 @@ def parse_binary_catalog(
             for offset in resource_provider_offsets
         ],
     )
-    catalog.resources = _decode_binary_resources(reader, header)
+    catalog.resources = _decode_binary_resources(reader, header, registry)
     return catalog
 
 
@@ -102,20 +108,29 @@ def _decode_json_resources(
     keys = _read_keys(str(raw["m_KeyDataString"]), buckets)
     locations = _read_locations(catalog, raw, keys)
 
-    return {
-        keys[index]: [locations[entry] for entry in bucket.entries]
-        for index, bucket in enumerate(buckets)
-    }
+    resources: dict[object, list[ResourceLocation]] = {}
+    for index, bucket in enumerate(buckets):
+        key = _item_at(keys, index, "bucket key")
+        resources[key] = [
+            _item_at(locations, entry, "bucket resource location") for entry in bucket.entries
+        ]
+    return resources
 
 
 def _read_buckets(bucket_data_string: str) -> list[_Bucket]:
     bucket_reader = BinaryReader(BytesIO(b64decode(bucket_data_string)))
     bucket_count = bucket_reader.read_int32()
+    if bucket_count < 0:
+        raise CatalogParseError("bucket count must be non-negative")
     buckets: list[_Bucket] = []
     for _ in range(bucket_count):
         offset = bucket_reader.read_int32()
         entry_count = bucket_reader.read_int32()
-        entries = [int(value) for value in bucket_reader.read_format(f"<{entry_count}i")]
+        if offset < 0:
+            raise CatalogParseError("bucket key offset must be non-negative")
+        if entry_count < 0:
+            raise CatalogParseError("bucket entry count must be non-negative")
+        entries = list(cast(tuple[int, ...], bucket_reader.read_format(f"<{entry_count}i")))
         buckets.append(_Bucket(offset=offset, entries=entries))
     return buckets
 
@@ -124,6 +139,10 @@ def _read_keys(key_data_string: str, buckets: list[_Bucket]) -> list[object]:
     key_stream = BytesIO(b64decode(key_data_string))
     key_reader = BinaryReader(key_stream)
     key_count = key_reader.read_int32()
+    if key_count < 0:
+        raise CatalogParseError("key count must be non-negative")
+    if key_count != len(buckets):
+        raise CatalogParseError(f"key count {key_count} does not match bucket count {len(buckets)}")
     keys: list[object] = []
     for index in range(key_count):
         key_stream.seek(buckets[index].offset)
@@ -140,6 +159,8 @@ def _read_locations(
     extra_stream = BytesIO(b64decode(str(raw["m_ExtraDataString"])))
     extra_reader = BinaryReader(extra_stream)
     entry_count = entry_reader.read_int32()
+    if entry_count < 0:
+        raise CatalogParseError("resource location count must be non-negative")
     locations: list[ResourceLocation] = []
 
     for _ in range(entry_count):
@@ -152,35 +173,42 @@ def _read_locations(
         resource_type_index = entry_reader.read_int32()
 
         internal_id = _apply_internal_id_prefix(
-            catalog.internal_ids[internal_id_index],
+            _item_at(catalog.internal_ids, internal_id_index, "internal ID"),
             catalog.internal_id_prefixes,
         )
-        provider_id = catalog.provider_ids[provider_index]
-        dependency_key = keys[dependency_key_index] if dependency_key_index >= 0 else None
+        provider_id = _item_at(catalog.provider_ids, provider_index, "provider ID")
+        dependency_key = (
+            _item_at(keys, dependency_key_index, "dependency key")
+            if dependency_key_index >= 0
+            else None
+        )
 
         if data_index >= 0:
             extra_stream.seek(data_index)
-            object_data = SerializedObjectDecoder.decode_v1(extra_reader)
+            object_data, data_type = SerializedObjectDecoder._decode_v1(extra_reader)
         else:
             object_data = None
+            data_type = None
 
         primary_key = (
-            keys[primary_key_index] if catalog.keys is None else catalog.keys[primary_key_index]
+            _item_at(keys, primary_key_index, "primary key")
+            if catalog.keys is None
+            else _item_at(catalog.keys, primary_key_index, "primary key")
         )
 
-        locations.append(
-            ResourceLocation(
-                internal_id=internal_id,
-                provider_id=provider_id,
-                dependency_key=dependency_key,
-                dependencies=None,
-                data=object_data,
-                hash_code=hash(internal_id) * 31 + hash(provider_id),
-                dependency_hash_code=dependency_hash,
-                primary_key=str(primary_key),
-                type=catalog.resource_types[resource_type_index],
-            )
+        location = ResourceLocation(
+            internal_id=internal_id,
+            provider_id=provider_id,
+            dependency_key=dependency_key,
+            dependencies=None,
+            data=object_data,
+            hash_code=hash(internal_id) * 31 + hash(provider_id),
+            dependency_hash_code=dependency_hash,
+            primary_key=str(primary_key),
+            type=_item_at(catalog.resource_types, resource_type_index, "resource type"),
         )
+        location._data_type = data_type
+        locations.append(location)
     return locations
 
 
@@ -192,7 +220,7 @@ def _apply_internal_id_prefix(internal_id: str, prefixes: list[str]) -> str:
         prefix_index = int(internal_id[:split_index])
     except ValueError:
         return internal_id
-    if prefix_index >= len(prefixes):
+    if not 0 <= prefix_index < len(prefixes):
         return internal_id
     return prefixes[prefix_index] + internal_id[split_index + 1 :]
 
@@ -232,6 +260,15 @@ def _optional_str(value: object) -> str | None:
     return str(value)
 
 
+T = TypeVar("T")
+
+
+def _item_at(values: Sequence[T], index: int, name: str) -> T:
+    if not 0 <= index < len(values):
+        raise CatalogParseError(f"{name} index {index} is out of range")
+    return values[index]
+
+
 def _object_initialization_data_from_binary(
     reader: CatalogBinaryReader,
     offset: int,
@@ -250,21 +287,21 @@ def _object_initialization_data_from_binary(
 def _decode_binary_resources(
     reader: CatalogBinaryReader,
     header: CatalogBinaryHeader,
+    registry: DecoderRegistry | None = None,
 ) -> dict[object, list[ResourceLocation]]:
     key_location_offsets = reader.read_offset_array(header.keys_offset)
+    if len(key_location_offsets) % 2 != 0:
+        raise BinaryReadError("key/location offset array must contain pairs")
     resources: dict[object, list[ResourceLocation]] = {}
     for index in range(0, len(key_location_offsets), 2):
         key_offset = key_location_offsets[index]
         location_list_offset = key_location_offsets[index + 1]
-        key = SerializedObjectDecoder.decode_v2(reader, key_offset)
+        key = SerializedObjectDecoder.decode_v2(reader, key_offset, registry)
         location_offsets = reader.read_offset_array(location_list_offset)
         resources[key] = [
             reader.read_custom(
                 offset,
-                lambda resource_offset=offset: _resource_location_from_binary(
-                    reader,
-                    resource_offset,
-                ),
+                partial(_resource_location_from_binary, reader, offset, registry),
             )
             for offset in location_offsets
         ]
@@ -274,6 +311,7 @@ def _decode_binary_resources(
 def _resource_location_from_binary(
     reader: CatalogBinaryReader,
     offset: int,
+    registry: DecoderRegistry | None = None,
 ) -> ResourceLocation:
     reader.seek(offset)
     primary_key_offset = reader.read_uint32()
@@ -292,22 +330,23 @@ def _resource_location_from_binary(
     dependencies = [
         reader.read_custom(
             dependency_offset,
-            lambda resource_offset=dependency_offset: _resource_location_from_binary(
-                reader,
-                resource_offset,
-            ),
+            partial(_resource_location_from_binary, reader, dependency_offset, registry),
         )
         for dependency_offset in dependency_offsets
     ]
 
-    return ResourceLocation(
+    object_data, data_type = SerializedObjectDecoder._decode_v2(reader, data_offset, registry)
+
+    location = ResourceLocation(
         internal_id=internal_id,
         provider_id=provider_id,
         dependency_key=None,
         dependencies=dependencies,
-        data=SerializedObjectDecoder.decode_v2(reader, data_offset),
+        data=object_data,
         hash_code=hash(internal_id) * 31 + hash(provider_id),
         dependency_hash_code=dependency_hash_code,
         primary_key=primary_key,
         type=reader.read_serialized_type(type_offset),
     )
+    location._data_type = data_type
+    return location
