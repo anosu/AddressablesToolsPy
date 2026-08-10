@@ -52,6 +52,7 @@ def test_pypi_workflow_uses_trusted_publishing() -> None:
     assert "id-token: write" in workflow
     assert "environment:" in workflow
     assert "name: pypi" in workflow
+    assert "uv sync --locked" in workflow
     assert "PYPI_TOKEN" not in workflow
     assert "password:" not in workflow
     assert "Trusted Publishing" in publishing_guide
