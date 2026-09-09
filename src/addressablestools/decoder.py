@@ -42,7 +42,7 @@ type ObjectDecoder[T] = Callable[[BinaryDecodeContext], T]
 
 _OBJECT_DATA = Struct("<2I")
 _STRING_OBJECT = Struct("<IB")
-_HASH128 = Struct("<4I")
+_HASH128 = Struct("<16s")
 _ASSET_BUNDLE_REQUEST_OPTIONS = Struct("<5I")
 _COMMON_INFO = Struct("<hBBi")
 
@@ -193,22 +193,27 @@ class SerializedObjectDecoder:
             return None, None
 
         type_name_offset, object_offset = cast(
-            tuple[int, int],
+            "tuple[int, int]",
             reader.read_struct_from(_OBJECT_DATA, offset),
         )
         is_default_object = object_offset == UINT32_MAX
 
-        serialized_type = reader.read_serialized_type(type_name_offset)
-        match_name = serialized_type.match_name_for_version(reader.version)
+        cached_type = reader._type_name_cache.get(type_name_offset)
+        if cached_type is None or cached_type[0] != reader.version:
+            serialized_type = reader.read_serialized_type(type_name_offset)
+            match_name = serialized_type.match_name_for_version(reader.version)
+            reader._type_name_cache[type_name_offset] = (reader.version, serialized_type, match_name)
+        else:
+            _, serialized_type, match_name = cached_type
         resolved_match_name = registry._resolve(match_name) if registry is not None else match_name
-        context = BinaryDecodeContext(
-            reader=reader,
-            offset=object_offset,
-            is_default=is_default_object,
-            serialized_type=serialized_type,
-        )
         custom_decoder = registry._get(resolved_match_name) if registry is not None else None
         if custom_decoder is not None:
+            context = BinaryDecodeContext(
+                reader=reader,
+                offset=object_offset,
+                is_default=is_default_object,
+                serialized_type=serialized_type,
+            )
             return custom_decoder(context), serialized_type
 
         match resolved_match_name:
@@ -238,7 +243,7 @@ class SerializedObjectDecoder:
                 if is_default_object:
                     return None, serialized_type
                 string_offset, separator_value = cast(
-                    tuple[int, int],
+                    "tuple[int, int]",
                     reader.read_struct_from(_STRING_OBJECT, object_offset),
                 )
                 separator = chr(separator_value)
@@ -251,13 +256,13 @@ class SerializedObjectDecoder:
             case SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME:
                 if is_default_object:
                     return None, serialized_type
-                options = reader.read_custom(
-                    object_offset,
-                    lambda: SerializedObjectDecoder.decode_asset_bundle_request_options_binary(
+                options = reader._object_cache.get(object_offset)
+                if options is None:
+                    options = SerializedObjectDecoder.decode_asset_bundle_request_options_binary(
                         reader,
                         object_offset,
-                    ),
-                )
+                    )
+                    reader._object_cache[object_offset] = options
                 return options, serialized_type
             case _:
                 raise UnsupportedSerializedObjectError(f"Unsupported object type: {match_name}")
@@ -318,19 +323,16 @@ class SerializedObjectDecoder:
         offset: int,
     ) -> AssetBundleRequestOptions:
         hash_offset, bundle_name_offset, crc, bundle_size, common_info_offset = cast(
-            tuple[int, int, int, int, int],
+            "tuple[int, int, int, int, int]",
             reader.read_struct_from(_ASSET_BUNDLE_REQUEST_OPTIONS, offset),
         )
 
-        hash_values = cast(
-            tuple[int, int, int, int],
-            reader.read_struct_from(_HASH128, hash_offset),
-        )
-        hash_value = Hash128.from_uint32s(*hash_values).value
-        common_info = reader.read_custom(
-            common_info_offset,
-            lambda: SerializedObjectDecoder.decode_common_info_binary(reader, common_info_offset),
-        )
+        # Hash128's little-endian representation is already the desired byte order.
+        hash_value = cast(bytes, reader.read_struct_from(_HASH128, hash_offset)[0]).hex()
+        common_info = cast("CommonInfo | None", reader._object_cache.get(common_info_offset))
+        if common_info is None:
+            common_info = SerializedObjectDecoder.decode_common_info_binary(reader, common_info_offset)
+            reader._object_cache[common_info_offset] = common_info
         common_info.version = 3
         return AssetBundleRequestOptions(
             hash=hash_value,
@@ -343,7 +345,7 @@ class SerializedObjectDecoder:
     @staticmethod
     def decode_common_info_binary(reader: CatalogBinaryReader, offset: int) -> CommonInfo:
         timeout, redirect_limit, retry_count, flags = cast(
-            tuple[int, int, int, int],
+            "tuple[int, int, int, int]",
             reader.read_struct_from(_COMMON_INFO, offset),
         )
         return CommonInfo(

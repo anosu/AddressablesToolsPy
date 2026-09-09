@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
-from struct import Struct, calcsize, error as StructError, unpack
+from struct import Struct, calcsize, error as StructError, unpack, unpack_from
 from typing import TypeVar, cast
 
 from addressablestools.exceptions import BinaryReadError, UnsupportedCatalogVersionError
@@ -105,7 +105,12 @@ class BinaryReader:
         if self._buffer is None:
             self.seek(position)
             return self.read_struct(parser)
-        return self.read_struct_at(parser, position)
+        if position < 0 or position + parser.size > len(self._buffer):
+            raise BinaryReadError(
+                f"expected {parser.size} bytes at position {position}, "
+                f"buffer has {len(self._buffer)} bytes"
+            )
+        return parser.unpack_from(self._buffer, position)
 
     def read_bytes_at(self, position: int, count: int) -> bytes:
         """Read bytes at an absolute position without changing the cursor."""
@@ -129,10 +134,10 @@ class BinaryReader:
         return _TWO_UINT32.unpack(self.read_exact(_TWO_UINT32.size))
 
     def read_two_uint32_at(self, position: int) -> tuple[int, int]:
-        return cast(tuple[int, int], self.read_struct_at(_TWO_UINT32, position))
+        return cast("tuple[int, int]", self.read_struct_at(_TWO_UINT32, position))
 
     def read_two_uint32_from(self, position: int) -> tuple[int, int]:
-        return cast(tuple[int, int], self.read_struct_from(_TWO_UINT32, position))
+        return cast("tuple[int, int]", self.read_struct_from(_TWO_UINT32, position))
 
     def read_four_uint32(self) -> tuple[int, int, int, int]:
         return _FOUR_UINT32.unpack(self.read_exact(_FOUR_UINT32.size))
@@ -150,7 +155,9 @@ class CatalogBinaryReader(BinaryReader):
         super().__init__(stream, _buffer=_buffer)
         self.version = 1
         self._object_cache: dict[int, object] = {}
-        self._string_cache: dict[tuple[int, str], str] = {}
+        self._string_cache: dict[int | tuple[int, str], str] = {}
+        self._dynamic_tail_cache: dict[int, tuple[str, ...]] = {}
+        self._type_name_cache: dict[int, tuple[int, SerializedType, str]] = {}
 
     def cache_and_return(self, offset: int, value: T) -> T:
         self._object_cache[offset] = value
@@ -170,38 +177,54 @@ class CatalogBinaryReader(BinaryReader):
         return value
 
     def _read_basic_string(self, offset: int, unicode: bool) -> str:
-        if self._buffer is None:
+        buffer = self._buffer
+        if buffer is None:
             self.seek(offset - _INT32.size)
             length = self.read_int32()
         else:
-            length = cast(int, self.read_struct_at(_INT32, offset - _INT32.size)[0])
+            if offset < _INT32.size or offset > len(buffer):
+                raise BinaryReadError(f"invalid string offset {offset}")
+            length = _INT32.unpack_from(buffer, offset - _INT32.size)[0]
         if length < 0:
             raise BinaryReadError("string byte length must be non-negative")
-        data = (
-            self.read_bytes(length) if self._buffer is None else self.read_bytes_at(offset, length)
-        )
+        if buffer is None:
+            data = self.read_bytes(length)
+        else:
+            end = offset + length
+            if end > len(buffer):
+                raise BinaryReadError(f"expected {length} bytes, got {len(buffer) - offset}")
+            data = buffer[offset:end]
         return data.decode("utf-16-le" if unicode else "ascii")
 
     def _read_dynamic_string(self, offset: int, separator: str) -> str:
-        parts: list[str] = []
-        next_part_offset = offset
-        visited_offsets: set[int] = set()
-        while True:
+        part_string_offset, next_part_offset = self.read_two_uint32_from(offset)
+        first = self.read_encoded_string(part_string_offset)
+        if next_part_offset == UINT32_MAX:
+            return "" if first is None else first
+
+        parts = [] if first is None else [first]
+        visited_offsets = {offset}
+        tail_offset = next_part_offset
+        tail_start = len(parts)
+        while next_part_offset != UINT32_MAX:
+            cached_tail = self._dynamic_tail_cache.get(next_part_offset)
+            if cached_tail is not None:
+                parts.extend(cached_tail)
+                break
             if next_part_offset in visited_offsets:
                 raise BinaryReadError(
                     f"dynamic string part chain contains a cycle at offset {next_part_offset}"
                 )
             visited_offsets.add(next_part_offset)
-            if self._buffer is None:
-                self.seek(next_part_offset)
-                part_string_offset, next_part_offset = self.read_two_uint32()
-            else:
-                part_string_offset, next_part_offset = self.read_two_uint32_at(next_part_offset)
+            part_string_offset, next_part_offset = self.read_two_uint32_from(next_part_offset)
             part = self.read_encoded_string(part_string_offset)
             if part is not None:
                 parts.append(part)
-            if next_part_offset == UINT32_MAX:
-                break
+        # Unity paths share linked tails. Cache the first tail, in wire order,
+        # so later paths can skip it regardless of separator or catalog version.
+        # Caching every suffix here would use quadratic space for a long chain.
+        if tail_offset not in self._dynamic_tail_cache:
+            self._dynamic_tail_cache[tail_offset] = tuple(parts[tail_start:])
         if len(parts) == 1:
             return parts[0]
         if self.version > 1:
@@ -213,12 +236,11 @@ class CatalogBinaryReader(BinaryReader):
         encoded_offset: int,
         dynamic_separator: str = "\0",
     ) -> str | None:
-        if encoded_offset in {UINT32_MAX, UINT32_MAX_MINUS_ONE}:
+        if encoded_offset == UINT32_MAX or encoded_offset == UINT32_MAX_MINUS_ONE:
             return None
 
         is_dynamic = (encoded_offset & 0x40000000) != 0 and dynamic_separator != "\0"
-        cache_separator = dynamic_separator if is_dynamic else "\0"
-        cache_key = (encoded_offset, cache_separator)
+        cache_key = (encoded_offset, dynamic_separator) if is_dynamic else encoded_offset
         cached = self._string_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -236,30 +258,43 @@ class CatalogBinaryReader(BinaryReader):
     def read_offset_array(self, encoded_offset: int) -> list[int]:
         if encoded_offset == UINT32_MAX:
             return []
-        cached = self.try_get_cached_object(encoded_offset, list)
-        if cached is not None:
+        cached = self._object_cache.get(encoded_offset)
+        if isinstance(cached, list):
             return cached
 
-        if self._buffer is None:
+        buffer = self._buffer
+        if buffer is None:
             self.seek(encoded_offset - _INT32.size)
             byte_size = self.read_int32()
         else:
-            byte_size = cast(int, self.read_struct_at(_INT32, encoded_offset - _INT32.size)[0])
+            if encoded_offset < _INT32.size or encoded_offset > len(buffer):
+                raise BinaryReadError(f"invalid offset array position {encoded_offset}")
+            byte_size = _INT32.unpack_from(buffer, encoded_offset - _INT32.size)[0]
         if byte_size < 0:
             raise BinaryReadError("offset array byte size must be non-negative")
         if byte_size % 4 != 0:
             raise BinaryReadError("offset array byte size must be a multiple of 4")
-        parser = Struct(f"<{byte_size // 4}I")
-        offsets = cast(
-            tuple[int, ...],
-            self.read_struct(parser)
-            if self._buffer is None
-            else self.read_struct_at(parser, encoded_offset),
-        )
-        return self.cache_and_return(encoded_offset, list(offsets))
+        fmt = f"<{byte_size // 4}I"
+        if buffer is None:
+            offsets = unpack(fmt, self.read_exact(byte_size))
+        else:
+            if encoded_offset + byte_size > len(buffer):
+                raise BinaryReadError(
+                    f"expected {byte_size} bytes at position {encoded_offset}, "
+                    f"buffer has {len(buffer)} bytes"
+                )
+            offsets = unpack_from(fmt, buffer, encoded_offset)
+        result = list(offsets)
+        self._object_cache[encoded_offset] = result
+        return result
 
     def read_serialized_type(self, offset: int) -> SerializedType:
-        return self.read_custom(offset, lambda: _read_serialized_type(self, offset))
+        cached = self._object_cache.get(offset)
+        if cached is not None:
+            return cast(SerializedType, cached)
+        value = _read_serialized_type(self, offset)
+        self._object_cache[offset] = value
+        return value
 
 
 def _read_serialized_type(reader: CatalogBinaryReader, offset: int) -> SerializedType:

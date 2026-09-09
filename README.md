@@ -49,6 +49,9 @@ print(location.provider_id)
 print(location.type.class_name if location.type else None)
 ```
 
+For reproducible binary parsing measurements and optimization results, see
+[the binary benchmarks](benchmarks/README.md).
+
 ## Auto-detect catalog format
 
 `parse()` dispatches `str` input to JSON parsing and `bytes` input to binary parsing.

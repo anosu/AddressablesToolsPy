@@ -147,3 +147,57 @@ def test_decoder_registry_aliases_custom_type_to_builtin() -> None:
     registry.alias("Custom.Assembly; Custom.Int32", SerializedObjectDecoder.INT_V3_MATCH_NAME)
 
     assert SerializedObjectDecoder.decode_v2(reader, 0, registry=registry) == 0
+
+
+def test_cached_type_does_not_freeze_registry_decoders_or_aliases() -> None:
+    reader = CatalogBinaryReader(BytesIO(struct.pack("<II", 8, UINT32_MAX)))
+    serialized_type = SerializedType("Custom", "Value")
+    setattr(reader, "read_serialized_type", lambda _offset: serialized_type)
+    registry = DecoderRegistry()
+    registry.alias("Custom; Value", SerializedObjectDecoder.INT_MATCH_NAME)
+    assert SerializedObjectDecoder.decode_v2(reader, 0, registry) == 0
+
+    contexts: list[BinaryDecodeContext] = []
+
+    def custom(context: BinaryDecodeContext) -> str:
+        contexts.append(context)
+        return "custom"
+
+    registry.register(SerializedObjectDecoder.INT_MATCH_NAME, custom)
+    assert SerializedObjectDecoder.decode_v2(reader, 0, registry) == "custom"
+    assert contexts[0].serialized_type is serialized_type
+    assert contexts[0].is_default
+    registry.alias("Custom; Value", SerializedObjectDecoder.BOOL_MATCH_NAME)
+    assert SerializedObjectDecoder.decode_v2(reader, 0, registry) is False
+    with pytest.raises(UnsupportedSerializedObjectError):
+        SerializedObjectDecoder.decode_v2(reader, 0, DecoderRegistry())
+
+
+def test_cached_type_match_name_accounts_for_reader_version() -> None:
+    reader = CatalogBinaryReader(BytesIO(struct.pack("<II", 8, UINT32_MAX)))
+    setattr(
+        reader, "read_serialized_type",
+        lambda _offset: SerializedType("mscorlib, Version=4.0.0.0", "System.Int32"),
+    )
+    assert SerializedObjectDecoder.decode_v2(reader, 0) == 0
+    reader.version = 3
+    with pytest.raises(UnsupportedSerializedObjectError, match="Version=4.0.0.0"):
+        SerializedObjectDecoder.decode_v2(reader, 0)
+
+
+@pytest.mark.parametrize("use_buffer", [False, True])
+def test_binary_bundle_hash_byte_order_and_shared_common_info(use_buffer: bool) -> None:
+    data = struct.pack(
+        "<5I16shBBi", 20, UINT32_MAX, 123, 456, 36, bytes(range(16)), 5, 2, 3, 0,
+    )
+    reader = CatalogBinaryReader(BytesIO(data), _buffer=data if use_buffer else None)
+    first = SerializedObjectDecoder.decode_asset_bundle_request_options_binary(reader, 0)
+    second = SerializedObjectDecoder.decode_asset_bundle_request_options_binary(reader, 0)
+    assert first.hash == "000102030405060708090a0b0c0d0e0f"
+    assert first.crc == 123
+    assert first.bundle_size == 456
+    assert first.bundle_name is None
+    assert first.common_info is second.common_info
+    assert first.common_info is not None
+    assert first.common_info.timeout == 5
+    assert first.common_info.version == 3

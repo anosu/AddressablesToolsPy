@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from base64 import b64decode
+from collections.abc import Iterator
 from dataclasses import dataclass
-from functools import partial
 from io import BytesIO
 import json
 from struct import Struct, error as StructError, unpack_from
 from typing import Mapping, Sequence, TypeVar, cast
 
-from addressablestools.binary import BinaryReader, CatalogBinaryHeader, CatalogBinaryReader
+from addressablestools.binary import (
+    UINT32_MAX,
+    BinaryReader,
+    CatalogBinaryHeader,
+    CatalogBinaryReader,
+)
 from addressablestools.decoder import DecoderRegistry, SerializedObjectDecoder
 from addressablestools.exceptions import BinaryReadError, CatalogParseError
 from addressablestools.models import (
@@ -29,6 +34,7 @@ _INT32 = Struct("<i")
 _BUCKET_HEADER = Struct("<2i")
 _JSON_LOCATION = Struct("<7i")
 _BINARY_LOCATION = Struct("<4Ii2I")
+_BINARY_KEY_PAIR = Struct("<2I")
 _OBJECT_INITIALIZATION_DATA = Struct("<3I")
 _ASCII_STRING_OBJECT_TYPE = SerializedObjectDecoder.ObjectType.ASCII_STRING.value
 _UNICODE_STRING_OBJECT_TYPE = SerializedObjectDecoder.ObjectType.UNICODE_STRING.value
@@ -318,7 +324,7 @@ def _object_initialization_data_from_binary(
     offset: int,
 ) -> ObjectInitializationData:
     id_offset, object_type_offset, data_offset = cast(
-        tuple[int, int, int],
+        "tuple[int, int, int]",
         reader.read_struct_from(_OBJECT_INITIALIZATION_DATA, offset),
     )
     return ObjectInitializationData(
@@ -333,20 +339,33 @@ def _decode_binary_resources(
     header: CatalogBinaryHeader,
     registry: DecoderRegistry | None = None,
 ) -> dict[object, list[ResourceLocation]]:
-    key_location_offsets = reader.read_offset_array(header.keys_offset)
-    if len(key_location_offsets) % 2 != 0:
-        raise BinaryReadError("key/location offset array must contain pairs")
+    pairs: Iterator[tuple[int, int]]
+    if reader._buffer is None or header.keys_offset == UINT32_MAX:
+        key_location_offsets = reader.read_offset_array(header.keys_offset)
+        if len(key_location_offsets) % 2 != 0:
+            raise BinaryReadError("key/location offset array must contain pairs")
+        offsets = iter(key_location_offsets)
+        pairs = zip(offsets, offsets)
+    else:
+        # This top-level index is consumed once. Iterating the byte view avoids
+        # retaining two Python integers per key for the duration of the parse.
+        byte_size = cast(int, reader.read_struct_at(_INT32, header.keys_offset - 4)[0])
+        if byte_size < 0:
+            raise BinaryReadError("offset array byte size must be non-negative")
+        if byte_size % 4:
+            raise BinaryReadError("offset array byte size must be a multiple of 4")
+        if byte_size % _BINARY_KEY_PAIR.size:
+            raise BinaryReadError("key/location offset array must contain pairs")
+        end = header.keys_offset + byte_size
+        if end > len(reader._buffer):
+            raise BinaryReadError("key/location offset array is truncated")
+        pairs = _BINARY_KEY_PAIR.iter_unpack(memoryview(reader._buffer)[header.keys_offset:end])
     resources: dict[object, list[ResourceLocation]] = {}
-    for index in range(0, len(key_location_offsets), 2):
-        key_offset = key_location_offsets[index]
-        location_list_offset = key_location_offsets[index + 1]
+    for key_offset, location_list_offset in pairs:
         key = SerializedObjectDecoder.decode_v2(reader, key_offset, registry)
         location_offsets = reader.read_offset_array(location_list_offset)
         resources[key] = [
-            reader.read_custom(
-                offset,
-                partial(_resource_location_from_binary, reader, offset, registry),
-            )
+            _resource_location_from_binary(reader, offset, registry)
             for offset in location_offsets
         ]
     return resources
@@ -357,6 +376,9 @@ def _resource_location_from_binary(
     offset: int,
     registry: DecoderRegistry | None = None,
 ) -> ResourceLocation:
+    cached = reader._object_cache.get(offset)
+    if cached is not None:
+        return cast(ResourceLocation, cached)
     (
         primary_key_offset,
         internal_id_offset,
@@ -366,7 +388,7 @@ def _resource_location_from_binary(
         data_offset,
         type_offset,
     ) = cast(
-        tuple[int, int, int, int, int, int, int],
+        "tuple[int, int, int, int, int, int, int]",
         reader.read_struct_from(_BINARY_LOCATION, offset),
     )
 
@@ -376,10 +398,7 @@ def _resource_location_from_binary(
 
     dependency_offsets = reader.read_offset_array(dependencies_offset)
     dependencies = [
-        reader.read_custom(
-            dependency_offset,
-            partial(_resource_location_from_binary, reader, dependency_offset, registry),
-        )
+        _resource_location_from_binary(reader, dependency_offset, registry)
         for dependency_offset in dependency_offsets
     ]
 
@@ -397,4 +416,5 @@ def _resource_location_from_binary(
         type=reader.read_serialized_type(type_offset),
     )
     location._data_type = data_type
+    reader._object_cache[offset] = location
     return location
