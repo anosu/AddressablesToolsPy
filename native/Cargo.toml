@@ -1,0 +1,18 @@
+[package]
+name = "addressablestools-rust"
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+description = "Optional native catalog parsers for addressablestools"
+
+[lib]
+name = "_addressablestools_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+base64 = "0.22"
+pyo3 = { version = "0.27", features = ["extension-module", "abi3-py312"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

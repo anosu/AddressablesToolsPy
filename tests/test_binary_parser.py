@@ -40,6 +40,18 @@ def test_parse_binary_accepts_decoder_registry(catalog_binary_bytes: bytes) -> N
     assert catalog.resources
 
 
+def test_custom_registry_does_not_use_registry_unaware_decoder(
+    catalog_binary_bytes: bytes, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from addressablestools import catalog as catalog_module
+
+    def unexpected_native_call(*args: object) -> None:
+        raise AssertionError("custom registry must use the registry-aware decoder")
+
+    monkeypatch.setattr(catalog_module, "_native_decode", unexpected_native_call)
+    assert parse_binary(catalog_binary_bytes, registry=DecoderRegistry()).resources
+
+
 def test_binary_resources_reject_odd_key_location_offset_count() -> None:
     reader = CatalogBinaryReader(BytesIO(b""))
     setattr(reader, "read_offset_array", lambda _offset: [1])

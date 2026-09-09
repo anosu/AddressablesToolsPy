@@ -11,6 +11,11 @@ name = "addressablestools"
 version = "1.0.0"
 source = { editable = "." }
 
+[package.optional-dependencies]
+native = [
+    { name = "addressablestools-rust" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
@@ -19,6 +24,8 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "addressablestools-rust", marker = "extra == 'native'", directory = "native" }]
+provides-extras = ["native"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -26,6 +33,17 @@ dev = [
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "ruff", specifier = ">=0.11.7" },
 ]
+
+[[package]]
+name = "addressablestools-rust"
+version = "0.3.0"
+source = { directory = "native" }
+dependencies = [
+    { name = "addressablestools" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "addressablestools", specifier = ">=1.0.0,<2" }]
 
 [[package]]
 name = "ast-serialize"

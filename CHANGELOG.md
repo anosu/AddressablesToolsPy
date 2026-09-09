@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Optional Rust acceleration for binary and JSON catalog resource decoding via the
+  `native` extra and the independently versioned `addressablestools-rust` package.
+- Per-call `backend="auto"`, `"python"`, or `"rust"` selection, format-specific
+  `available_backends()`, and `NativeBackendUnavailableError` for strict selection.
+- Differential tests, malformed-input coverage, isolated wheel verification, and
+  Python 3.12/3.14 native CI on Windows, Linux, and macOS.
+- Native API 3 / companion 0.3 supports `DecoderRegistry` through shared-cache
+  resource traversal and Python object dispatch, including aliases, custom keys,
+  built-in overrides, nested decoding, and live registry changes.
+- Portable native wheel builds for Linux x86_64/ARM64 (manylinux2014), macOS
+  Intel/Apple Silicon, and Windows x64, with platform/ABI audits and complete tests
+  against installed wheels on Python 3.12 and 3.14.
+
+### Changed
+
+- Reduced temporary allocations and repeated index/metadata work in Python parsers.
+- Deprecated parse APIs also use native acceleration; patchers and handlers use
+  the registry bridge. Non-native-compatible readers retain Python in auto mode.
+- Missing or incompatible native extensions automatically fall back to Python.
+
 ## [1.0.0] - 2026-08-10
 
 ### Added

@@ -16,3 +16,7 @@ class UnsupportedSerializedObjectError(CatalogParseError):
 
 class BinaryReadError(CatalogParseError):
     """Raised when binary catalog data cannot be read safely."""
+
+
+class NativeBackendUnavailableError(AddressablesToolsError):
+    """Raised when an explicitly requested Rust backend cannot handle a call."""

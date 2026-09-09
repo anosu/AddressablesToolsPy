@@ -347,14 +347,20 @@ def parse(
     data: str | bytes,
     patcher: Patcher | None = None,
     handler: Handler | None = None,
+    *,
+    backend: addressablestools.Backend = "auto",
 ) -> CompatCatalog:
     _warn_deprecated("AddressablesTools.parse")
     if isinstance(data, str):
-        parsed = addressablestools.parse_json(data)
+        parsed = addressablestools.parse_json(data, backend=backend)
     else:
         parsed = addressablestools.parse_binary(
             data,
-            registry=_LegacyDecoderRegistry(patcher, handler),
+            registry=(
+                _LegacyDecoderRegistry(patcher, handler)
+                if patcher is not None or handler is not None else None
+            ),
+            backend=backend,
         )
     return cast(
         CompatCatalog,
@@ -362,15 +368,17 @@ def parse(
     )
 
 
-def parse_json(data: str) -> CompatCatalog:
+def parse_json(data: str, *, backend: addressablestools.Backend = "auto") -> CompatCatalog:
     _warn_deprecated("AddressablesTools.parse_json")
-    return cast(CompatCatalog, wrap_legacy(addressablestools.parse_json(data)))
+    return cast(CompatCatalog, wrap_legacy(addressablestools.parse_json(data, backend=backend)))
 
 
 def parse_binary(
     data: bytes,
     patcher: Patcher | None = None,
     handler: Handler | None = None,
+    *,
+    backend: addressablestools.Backend = "auto",
 ) -> CompatCatalog:
     _warn_deprecated("AddressablesTools.parse_binary")
     return cast(
@@ -378,7 +386,11 @@ def parse_binary(
         wrap_legacy(
             addressablestools.parse_binary(
                 data,
-                registry=_LegacyDecoderRegistry(patcher, handler),
+                registry=(
+                    _LegacyDecoderRegistry(patcher, handler)
+                    if patcher is not None or handler is not None else None
+                ),
+                backend=backend,
             )
         ),
     )

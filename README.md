@@ -49,8 +49,36 @@ print(location.provider_id)
 print(location.type.class_name if location.type else None)
 ```
 
-For reproducible binary parsing measurements and optimization results, see
-[the binary benchmarks](benchmarks/README.md).
+For reproducible parsing measurements and optimization results, see
+[the catalog benchmarks](benchmarks/README.md).
+
+An [optional Rust accelerator](native/README.md) can be built from this checkout:
+
+```shell
+uv sync --locked --extra native
+```
+
+Once installed, `parse()`, `parse_binary()`, and `parse_json()` use it automatically
+for supported calls. Select the backend per call:
+
+```python
+from pathlib import Path
+from addressablestools import available_backends, parse_json
+
+data = Path("tests/samples/catalog.json").read_text(encoding="utf-8")
+print(available_backends("json"))  # ("python", "rust") when the JSON accelerator is installed
+catalog = parse_json(data, backend="auto")
+reference = parse_json(data, backend="python")
+```
+
+`auto` uses Python when the extension is missing or incompatible. Native API 3
+(companion package 0.3) also supports `DecoderRegistry`: Rust traverses resources
+and dependencies while Python handles object dispatch and custom callbacks.
+`rust` requires native support and raises
+`NativeBackendUnavailableError` instead of silently falling back. Backend selection
+is local to each call. The deprecated API accepts the same keyword; patchers and
+handlers use the same registry bridge. Older extensions fall back to Python for
+registries in auto mode.
 
 ## Auto-detect catalog format
 
@@ -116,6 +144,10 @@ catalog = parse_binary(Path("catalog.bin").read_bytes(), registry=registry)
 ```
 
 Decoder functions receive the exact serialized type together with the object offset.
+With companion 0.3 or newer compatible native support installed, these calls use
+Rust resource traversal automatically. Add `backend="rust"` to require it or
+`backend="python"` to use the reference parser. Decoder functions keep running in
+Python with the same reader and shared object cache.
 
 ```python
 from dataclasses import dataclass

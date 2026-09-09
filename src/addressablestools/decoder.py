@@ -160,18 +160,15 @@ class SerializedObjectDecoder:
                 assembly_name = SerializedObjectDecoder.read_string1(reader)
                 class_name = SerializedObjectDecoder.read_string1(reader)
                 json_text = SerializedObjectDecoder.read_string4_unicode(reader)
-                json_object = ClassJsonObject(
-                    type=SerializedType(assembly_name, class_name),
-                    json_text=json_text,
-                )
-                if json_object.type.match_name_for_version(1) == (
+                serialized_type = SerializedType(assembly_name, class_name)
+                if serialized_type.match_name_for_version(1) == (
                     SerializedObjectDecoder.ASSET_BUNDLE_REQUEST_OPTIONS_MATCH_NAME
                 ):
                     return (
                         SerializedObjectDecoder.decode_asset_bundle_request_options_json(json_text),
-                        json_object.type,
+                        serialized_type,
                     )
-                return json_object, json_object.type
+                return ClassJsonObject(serialized_type, json_text), serialized_type
 
     @staticmethod
     def decode_v2(

@@ -1,0 +1,193 @@
+name: Build and verify native wheels
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["native/**", "src/**", "tests/**", "benchmarks/**", "pyproject.toml", "uv.lock", ".github/workflows/native.yml"]
+  pull_request:
+    paths: ["native/**", "src/**", "tests/**", "benchmarks/**", "pyproject.toml", "uv.lock", ".github/workflows/native.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-wheels-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Python fallback and source checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: python -m pip install uv
+      - run: uv sync --locked
+      - name: Test without native extension
+        run: uv run --no-sync python -m pytest -q
+      - run: uv run --no-sync python -m ruff check .
+      - run: uv run --no-sync python -m mypy
+      - run: cargo fmt --manifest-path native/Cargo.toml --check
+      - run: cargo clippy --locked --manifest-path native/Cargo.toml --lib -- -D warnings
+
+  packages:
+    name: Build Python wheel and native sdist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: python -m pip install uv
+      - run: uv build --wheel --no-sources --out-dir dist/python
+      - name: Build native source distribution
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8 # v1
+        with:
+          maturin-version: v1.15.0
+          command: sdist
+          args: --manifest-path native/Cargo.toml --out dist/native
+      - name: Check distribution metadata
+        run: uvx twine check --strict dist/python/* dist/native/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-wheel
+          path: dist/python/*.whl
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-sdist
+          path: dist/native/*.tar.gz
+          if-no-files-found: error
+
+  wheels:
+    name: Wheel / ${{ matrix.platform }}
+    needs: packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            container: quay.io/pypa/manylinux2014_x86_64:latest
+            manylinux: "2014"
+            interpreter: python3.12
+            wheel-platform: manylinux_2_17_x86_64
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            container: quay.io/pypa/manylinux2014_aarch64:latest
+            manylinux: "2014"
+            interpreter: python3.12
+            wheel-platform: manylinux_2_17_aarch64
+          - platform: macos-x86_64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            container: "off"
+            manylinux: "off"
+            interpreter: python
+            deployment-target: "10.13"
+            wheel-platform: macosx_10_13_x86_64
+          - platform: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+            container: "off"
+            manylinux: "off"
+            interpreter: python
+            deployment-target: "11.0"
+            wheel-platform: macosx_11_0_arm64
+          - platform: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            container: "off"
+            manylinux: "off"
+            interpreter: python
+            wheel-platform: win_amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: python -m pip install uv
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-wheel
+          path: dist/python
+      - name: Set macOS minimum deployment version
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          DEPLOYMENT_TARGET: ${{ matrix.deployment-target }}
+        run: echo "MACOSX_DEPLOYMENT_TARGET=$DEPLOYMENT_TARGET" >> "$GITHUB_ENV"
+      - name: Build portable release wheel
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8 # v1
+        with:
+          maturin-version: v1.15.0
+          target: ${{ matrix.target }}
+          container: ${{ matrix.container }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --manifest-path native/Cargo.toml --out dist/native --interpreter ${{ matrix.interpreter }}
+      - name: Check wheel metadata, platform tag and stable ABI
+        shell: bash
+        env:
+          WHEEL_PLATFORM: ${{ matrix.wheel-platform }}
+        run: |
+          uvx twine check --strict dist/native/*.whl
+          python tests/check_native_wheel.py dist/native --platform "$WHEEL_PLATFORM"
+          uvx abi3audit --strict --summary dist/native/*.whl
+      - name: Audit Linux external library requirements
+        if: runner.os == 'Linux'
+        shell: bash
+        run: uvx auditwheel show dist/native/*.whl
+      - name: Install and test the same wheel on Python 3.12 and 3.14
+        shell: bash
+        run: |
+          python_wheels=(dist/python/*.whl)
+          native_wheels=(dist/native/*.whl)
+          for python_version in 3.12 3.14; do
+            uv run --isolated --no-project --no-build --python "$python_version" --with "${python_wheels[0]}" --with "${native_wheels[0]}" python tests/smoke_wheels.py
+            uv run --isolated --no-project --no-build --python "$python_version" --with "${python_wheels[0]}" --with "${native_wheels[0]}" --with pytest python -m pytest -q -o pythonpath=
+          done
+      - name: Store verified wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-wheel-${{ matrix.platform }}
+          path: dist/native/*.whl
+          if-no-files-found: error
+
+  collect:
+    name: Collect verified distributions
+    needs: [checks, packages, wheels]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: dist/native
+      - name: Require all five wheels and one source distribution
+        shell: bash
+        run: |
+          wheels=(dist/native/*.whl)
+          sdists=(dist/native/*.tar.gz)
+          test "${#wheels[@]}" -eq 5
+          test "${#sdists[@]}" -eq 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: addressablestools-rust-distributions
+          path: dist/native/
+          if-no-files-found: error
