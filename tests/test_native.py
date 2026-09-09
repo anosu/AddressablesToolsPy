@@ -1,4 +1,4 @@
-"""Differential tests run when the optional extension is installed."""
+"""Differential tests run when the native extension is installed."""
 
 from __future__ import annotations
 

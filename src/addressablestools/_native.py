@@ -1,4 +1,4 @@
-"""Optional native capabilities and per-call backend selection."""
+"""Native capabilities and per-call backend selection."""
 
 from collections.abc import Callable
 from importlib import import_module
@@ -79,7 +79,7 @@ def select_decoder[T](
     if decoder is None and backend == "rust":
         reason = _load_error or "installed extension does not provide this decoder"
         raise NativeBackendUnavailableError(
-            f"Rust backend unavailable: {reason}. Install/rebuild with uv sync --extra native, "
+            f"Rust backend unavailable: {reason}. Install/rebuild with uv sync --locked, "
             "or select backend='python'."
         )
     return decoder

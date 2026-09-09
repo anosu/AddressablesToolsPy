@@ -13,6 +13,12 @@ tested against a broad catalog corpus.
 pip install addressablestools
 ```
 
+The next release installs `addressablestools-rust` by default. Standard CPython
+3.12+ on the [supported platforms](PUBLISHING.md#native-companion) installs a
+prebuilt wheel without a Rust toolchain. Platforms without a compatible wheel
+need Rust 1.88+ and a platform linker to build from source. `backend="python"`
+still selects the reference parser; it does not change installation dependencies.
+
 ## Parse JSON catalogs
 
 ```python
@@ -52,13 +58,13 @@ print(location.type.class_name if location.type else None)
 For reproducible parsing measurements and optimization results, see
 [the catalog benchmarks](benchmarks/README.md).
 
-An [optional Rust accelerator](native/README.md) can be built from this checkout:
+The [Rust accelerator](native/README.md) is also installed by default from this checkout:
 
 ```shell
-uv sync --locked --extra native
+uv sync --locked
 ```
 
-Once installed, `parse()`, `parse_binary()`, and `parse_json()` use it automatically
+`parse()`, `parse_binary()`, and `parse_json()` use it automatically
 for supported calls. Select the backend per call:
 
 ```python
@@ -80,6 +86,7 @@ decoders. Calls to `register()` and `alias()` invalidate cached dispatch decisio
 is local to each call. The deprecated API accepts the same keyword; patchers and
 handlers use the same registry bridge. Older extensions fall back to Python for
 registries in auto mode.
+The previous `native` extra remains accepted as a compatibility alias.
 
 ## Auto-detect catalog format
 

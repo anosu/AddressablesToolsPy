@@ -14,7 +14,7 @@ are not included in tracemalloc. Use `--rss` for a separate fresh-process peak
 measurement that includes native allocations, the input, and Python startup, with
 no tracing or fingerprint computation in that worker.
 
-`--backend python` forces the Python path; `--backend rust` requires the optional
+`--backend python` forces the Python path; `--backend rust` requires the installed native
 extension. `--cpu 0` pins just the benchmark process to a logical CPU on Windows/Linux.
 
 Each timed iteration fully parses the in-memory bytes and releases the catalog.
@@ -106,7 +106,7 @@ fragments. These changes avoid paying for speed with a higher peak working set.
 Backend choice uses public per-call arguments, with no process-global switches:
 
 ```shell
-uv sync --locked --extra native
+uv sync --locked
 uv run python benchmarks/benchmark_binary.py path/to/catalog.bin --backend python --repeat 7 --rss --cpu 0
 uv run python benchmarks/benchmark_binary.py path/to/catalog.bin --backend rust --repeat 7 --rss --cpu 0
 uv run python benchmarks/benchmark_json.py path/to/catalog.json --backend python --repeat 7 --rss --cpu 0 --fingerprint

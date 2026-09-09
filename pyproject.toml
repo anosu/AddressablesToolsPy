@@ -11,10 +11,11 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["addressablestools-rust>=0.3.1,<0.4"]
 
 [project.optional-dependencies]
-native = ["addressablestools-rust>=0.3.1,<0.4"]
+# Retain the old extra as a compatibility alias; acceleration is installed by default.
+native = []
 
 [tool.uv.sources]
 addressablestools-rust = { path = "native" }

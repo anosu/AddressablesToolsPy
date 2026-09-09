@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument("--rss-worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.backend == "rust" and "rust" not in available_backends("json"):
-        parser.error("Rust JSON extension is not available; run: uv sync --extra native")
+        parser.error("Rust JSON extension is not available; run: uv sync --locked")
     parse_catalog = partial(parse_json, backend=args.backend)
     if args.repeat < 1:
         parser.error("repeat must be positive")

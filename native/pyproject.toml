@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "addressablestools-rust"
 version = "0.3.1"
-description = "Optional Rust acceleration for addressablestools catalogs"
+description = "Rust acceleration for addressablestools catalogs"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

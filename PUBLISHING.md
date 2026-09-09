@@ -50,11 +50,15 @@ publish action also uploads PEP 740 attestations by default.
 
 ## Native companion
 
-The optional `addressablestools-rust` distribution is versioned independently in
-`native/pyproject.toml` and `native/Cargo.toml`. The `native` extra resolves this
-local source in a checkout; published metadata resolves it from the package index.
-Publish the companion version required by the extra before releasing a main
-package that requires it. The existing `publish.yml` publishes only the main package.
+The default dependency `addressablestools-rust` is versioned independently in
+`native/pyproject.toml` and `native/Cargo.toml`. `uv sync --locked` resolves its local
+source in a checkout; published metadata resolves it from the package index. The
+old `native` extra remains accepted but no longer changes the dependency set.
+Publish the required companion version and its platform wheels before releasing
+the main package. The existing `publish.yml` publishes only the main package and
+checks that compatible native wheels are available from PyPI for all five targets
+before allowing publication. Bump the main package version before its next release;
+the current checkout's packaging changes have not been published.
 
 The `native.yml` workflow builds portable release wheels on native runners:
 
@@ -75,8 +79,10 @@ runtime testing uses the current runners, not every historical OS release.
 
 Before uploading an artifact, CI checks package metadata, exact platform/ABI tags,
 stable ABI symbols (`abi3audit`), and Linux library requirements (`auditwheel`).
-It installs the same wheel alongside the main Python wheel in isolated Python
-3.12 and 3.14 environments with source builds disabled, then runs the installed
+It requests only the main Python wheel in isolated Python 3.12 and 3.14 environments,
+with the native wheel directory supplied as a package source. The dependency resolver
+must install the native companion automatically. Source builds and package indexes
+are disabled during these checks, ensuring the newly built wheel is tested. CI then runs the installed
 wheel smoke check and the complete test suite. Tests import installed packages
 using `-o pythonpath=`. All platform jobs and source checks must pass before the
 `addressablestools-rust-distributions` artifact is assembled (five wheels and one

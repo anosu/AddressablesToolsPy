@@ -211,7 +211,7 @@ def main() -> None:
         else decode_registry_resources is not None
     )
     if args.backend == "rust" and not native_supported:
-        parser.error("Rust extension is not available; run: uv sync --extra native")
+        parser.error("Rust extension is not available; run: uv sync --locked")
     parse_catalog = partial(parse_binary, registry=make_registry(args.registry), backend=args.backend)
     if args.repeat < 1 or args.number < 1:
         parser.error("repeat and number must be positive")

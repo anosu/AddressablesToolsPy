@@ -9,8 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Optional Rust acceleration for binary and JSON catalog resource decoding via the
-  `native` extra and the independently versioned `addressablestools-rust` package.
+- Rust acceleration for binary and JSON catalog resource decoding via the
+  independently versioned `addressablestools-rust` package, installed by default.
 - Per-call `backend="auto"`, `"python"`, or `"rust"` selection, format-specific
   `available_backends()`, and `NativeBackendUnavailableError` for strict selection.
 - Differential tests, malformed-input coverage, isolated wheel verification, and
@@ -24,6 +24,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Rust acceleration is a default installation dependency. The `native` extra is
+  retained as a compatibility alias; `backend="python"` still selects the reference
+  parser. Main-package publication requires compatible native wheels on PyPI.
 - Native 0.3.1 keeps built-in objects in Rust for standard decoder registries,
   invalidates cached dispatch on public registry changes, and accelerates common
   JSON ID prefixes while preserving Python's unusual integer/Unicode cases.

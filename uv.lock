@@ -10,9 +10,7 @@ resolution-markers = [
 name = "addressablestools"
 version = "1.0.0"
 source = { editable = "." }
-
-[package.optional-dependencies]
-native = [
+dependencies = [
     { name = "addressablestools-rust" },
 ]
 
@@ -24,7 +22,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "addressablestools-rust", marker = "extra == 'native'", directory = "native" }]
+requires-dist = [{ name = "addressablestools-rust", directory = "native" }]
 provides-extras = ["native"]
 
 [package.metadata.requires-dev]

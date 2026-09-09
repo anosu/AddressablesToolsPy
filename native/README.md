@@ -1,4 +1,4 @@
-# Optional Rust accelerator
+# Rust accelerator
 
 This companion package accelerates JSON and binary resource decoding for the Python package
 in this repository. It uses PyO3 and returns the existing Python data classes,
@@ -10,12 +10,13 @@ Install a Rust toolchain and the platform C/C++ linker (MSVC Build Tools on Wind
 then run this command from the repository root:
 
 ```shell
-uv sync --locked --extra native
+uv sync --locked
 ```
 
 This builds an optimized extension and installs it into `.venv` using the local
-source recorded in `uv.lock`. The ordinary parse APIs automatically use it. The base Python
-package remains independently installable with setuptools and no compiler.
+source recorded in `uv.lock`. The ordinary parse APIs automatically use it. The
+main package declares this companion as a default dependency. Normal installation
+with a compatible wheel requires no Rust compiler; source checkouts build it locally.
 
 Without a registry, binary versions 1–3 and all built-in object types are handled
 in Rust. JSON bucket,
@@ -63,16 +64,19 @@ through another backend.
 To rebuild after Rust changes:
 
 ```shell
-uv sync --locked --extra native --reinstall-package addressablestools-rust
+uv sync --locked --reinstall-package addressablestools-rust
 ```
 
-To return to the Python backend:
+To use the Python backend, pass `backend="python"` to the parse function. For
+development tests that deliberately omit the extension:
 
 ```shell
-uv sync --locked
+uv sync --locked --no-install-package addressablestools-rust
+uv run --no-sync python -m pytest -q
 ```
 
-Alternatively, keep the extension installed and pass `backend="python"` when comparing results.
+This intentionally skips a declared dependency. A normal `uv sync --locked`
+installs it again. The old `--extra native` option remains a compatibility alias.
 
 ## Build a wheel
 
