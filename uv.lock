@@ -36,7 +36,7 @@ dev = [
 
 [[package]]
 name = "addressablestools-rust"
-version = "0.3.0"
+version = "0.3.1"
 source = { directory = "native" }
 dependencies = [
     { name = "addressablestools" },

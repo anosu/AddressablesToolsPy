@@ -24,6 +24,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Native 0.3.1 keeps built-in objects in Rust for standard decoder registries,
+  invalidates cached dispatch on public registry changes, and accelerates common
+  JSON ID prefixes while preserving Python's unusual integer/Unicode cases.
 - Reduced temporary allocations and repeated index/metadata work in Python parsers.
 - Deprecated parse APIs also use native acceleration; patchers and handlers use
   the registry bridge. Non-native-compatible readers retain Python in auto mode.

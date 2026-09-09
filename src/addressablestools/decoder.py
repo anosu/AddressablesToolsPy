@@ -57,6 +57,7 @@ class DecoderRegistry:
     def __init__(self) -> None:
         self._decoders: dict[str, ObjectDecoder[object]] = {}
         self._aliases: dict[str, str] = {}
+        self._revision = 0
 
     @overload
     def register(self, match_name: str, decoder: ObjectDecoder[T], /) -> ObjectDecoder[T]: ...
@@ -84,6 +85,7 @@ class DecoderRegistry:
 
         def add(registered: ObjectDecoder[T]) -> ObjectDecoder[T]:
             self._decoders[match_name] = cast(ObjectDecoder[object], registered)
+            self._revision += 1
             return registered
 
         return add if decoder is None else add(decoder)
@@ -92,6 +94,7 @@ class DecoderRegistry:
         """Map one serialized type match name to another registered or built-in type."""
 
         self._aliases[match_name] = target
+        self._revision += 1
 
     def _resolve(self, match_name: str, /) -> str:
         resolved = match_name

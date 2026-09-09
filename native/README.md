@@ -20,8 +20,9 @@ package remains independently installable with setuptools and no compiler.
 Without a registry, binary versions 1–3 and all built-in object types are handled
 in Rust. JSON bucket,
 key, location, and serialized-object fields are decoded in Rust. Top-level JSON
-text, bundle option defaults/conversions, and ID prefix semantics retain the existing
-Python implementations. Noncanonical Base64 falls back to Python's permissive decoder.
+text and bundle option defaults/conversions retain the existing Python implementations. Since 0.3.1, ordinary numeric ID prefixes are expanded in
+Rust; unusual Python integer spellings and lone surrogates retain Python handling.
+Noncanonical Base64 falls back to Python's permissive decoder.
 Headers, initialization metadata, and public model classes are shared across backends.
 
 | Backend | Behavior |
@@ -34,12 +35,20 @@ Headers, initialization metadata, and public model classes are shared across bac
 the keyword-only `backend` argument. `available_backends("json")` and
 `available_backends("binary")` report installed capabilities. Selection does not
 mutate global state. Native API 3 (package 0.3) supports `DecoderRegistry`, including
-legacy patchers/handlers. Rust traverses resources and dependencies; the existing
-Python object decoder resolves aliases and invokes callbacks with the original
-`BinaryDecodeContext`. The reader and native traversal share the object cache.
+legacy patchers/handlers. Since 0.3.1, standard registries cache type dispatch and
+decode built-in objects in Rust. `register()` and `alias()` increment a revision
+that invalidates dispatch decisions, including those cached before a callback.
+Custom objects still use the Python decoder with the original `BinaryDecodeContext`.
+Registry subclasses and instance overrides of `_resolve`/`_get` keep the full Python
+bridge. The reader and native traversal share the object cache and preserve cursor
+position after scalar reads. Scalars retain Python reader operations so callback
+writes to the underlying stream remain observable. Modify registries through their public methods;
+direct writes to their private dictionaries bypass cache invalidation.
 Registry changes during callbacks take effect on subsequent objects, and callback
 exceptions propagate without retry. Custom Python functions still execute in Python;
-speedup depends on how much time those functions spend decoding objects.
+speedup depends on how much time those functions spend decoding objects. The new
+entry point is an additive API 3 capability; older API 3 extensions retain the
+original registry bridge with the updated Python package.
 
 Stream readers and non-plain-bytes buffers use Python in auto mode; forcing Rust
 reports an unsupported-call error.

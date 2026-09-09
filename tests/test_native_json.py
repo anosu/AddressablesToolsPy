@@ -27,6 +27,35 @@ def compare(raw: dict[str, object]) -> None:
                 assert left._data_type == right._data_type
 
 
+@pytest.mark.parametrize("prefix", ["base/", "资源/🎮/", "\ud800/"])
+@pytest.mark.parametrize("identifier", [
+    "asset", "0#asset", "00#asset", "0#", "0#资源/🎮", "0#\ud800", "0#a#b",
+    "1#outside", "9999999999999999999#outside", "0" * 50 + "#asset",
+    "9" * 5000 + "#asset", "-1#asset", "-0#asset", "+0#asset", " 0 #asset",
+    "٠#asset", "０#asset", "0_0#asset", "#asset", "x#asset",
+])
+def test_prefix_fast_path_preserves_python_integer_and_unicode_semantics(prefix, identifier):
+    raw = _minimal_json_catalog()
+    raw["m_InternalIdPrefixes"] = [prefix]
+    raw["m_InternalIds"] = [identifier]
+    compare(raw)
+
+
+def test_ordinary_prefixes_do_not_call_python_helper(monkeypatch):
+    from addressablestools import catalog
+
+    native = pytest.importorskip("_addressablestools_rust")
+    if not hasattr(native, "decode_resources_with_registry_fast"):
+        pytest.skip("requires native 0.3.1")
+    monkeypatch.setattr(catalog, "_apply_internal_id_prefix", lambda *args: pytest.fail("Python prefix"))
+    for identifier, expected in [("0#asset", "base/asset"), ("plain", "plain"), ("2#asset", "2#asset")]:
+        raw = _minimal_json_catalog()
+        raw["m_InternalIdPrefixes"] = ["base/"]
+        raw["m_InternalIds"] = [identifier]
+        result = parse_json(json.dumps(raw), backend="rust")
+        assert result.resources["asset"][0].internal_id == expected
+
+
 @pytest.mark.parametrize("decoration", ["whitespace", "punctuation", "padding", "nonzero_bits"])
 def test_noncanonical_base64_matches_python(decoration: str) -> None:
     raw = _minimal_json_catalog()

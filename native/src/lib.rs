@@ -11,6 +11,10 @@ fn _addressablestools_rust(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     module.add_function(wrap_pyfunction!(binary::decode_resources, module)?)?;
     module.add_function(wrap_pyfunction!(
+        binary::decode_resources_with_registry_fast,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
         binary::decode_resources_with_registry,
         module
     )?)?;

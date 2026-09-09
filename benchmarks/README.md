@@ -27,7 +27,39 @@ The fingerprint covers catalog metadata, keys, resource fields, decoded data,
 type metadata, dependencies, and shared resource identity. Process-dependent hash
 codes are checked against their defining formula instead of included in the digest.
 
-## DecoderRegistry integration (native 0.3)
+## Registry dispatch and JSON prefixes (native 0.3.1)
+
+Compared with 0.3.0 at commit `6bb00b2`, both built locally with Rust 1.97.1.
+Windows x64, CPython 3.12.12, logical CPU 0, twelve measurements per version with
+old/new order alternating in one process. Both native modules and both input
+buffers remain loaded, so compare these paired measurements rather than absolute
+times from earlier sessions. Timings include parsing and disposal; file I/O and
+full-result fingerprints are outside the timed region. All fingerprints match.
+
+| Input / registry | Native 0.3.0 | Native 0.3.1 | Time reduction |
+| --- | ---: | ---: | ---: |
+| Binary, none | 813 ms | 823 ms | Within measurement variation |
+| Binary, empty registry | 1,595 ms | 937 ms | 41.2% |
+| Binary, Python bundle decoder | 1,743 ms | 1,348 ms | 22.7% |
+| JSON | 651 ms | 603 ms | 7.3% |
+
+Separate fresh-process peak measurements fell from 218.6 to 189.1 MiB with an
+empty registry and from 218.7 to 193.7 MiB with the bundle callback. JSON peak
+memory stayed approximately 339 MiB. Timing differences across repeated sessions
+remain sensitive to CPU clock and scheduling; these are dataset-specific results.
+
+Standard registries now cache dispatch decisions by serialized type and registry
+revision. Built-in dispatch stays native; only custom objects call the Python object
+decoder. Public registry mutations invalidate decisions immediately for subsequent
+objects. Subclasses and instance resolution overrides retain the original bridge.
+Common JSON ID prefixes avoid Python calls; unusual integer syntax and Unicode
+cases retain the reference helper. Top-level and embedded `json.loads` are unchanged.
+
+The original registry bridge crossed into Python 222,464 times on the binary sample
+even with an empty registry. The new built-in path avoids these object-decoder calls.
+The JSON sample previously called the Python ID-prefix helper 111,260 times.
+
+## Earlier DecoderRegistry integration (native 0.3.0)
 
 Windows x64, CPython 3.12.12, logical CPU 0, seven runs on the user-provided
 29,266,872-byte binary catalog (150,086 keys). Times include parsing and disposal;

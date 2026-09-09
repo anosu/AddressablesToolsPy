@@ -12,6 +12,108 @@ from tests.test_native import CatalogFixture, NULL, native
 pytestmark = pytest.mark.skipif(native.API_VERSION < 3, reason="requires native registry support")
 
 
+def test_builtin_objects_do_not_cross_python_bridge(catalog_binary_bytes, monkeypatch):
+    if not hasattr(native, "decode_resources_with_registry_fast"):
+        pytest.skip("requires native 0.3.1")
+
+    def unexpected(*args):
+        raise AssertionError("built-in object entered Python decoder")
+
+    monkeypatch.setattr(SerializedObjectDecoder, "_decode_v2", unexpected)
+    assert parse_binary(catalog_binary_bytes, DecoderRegistry(), backend="rust").resources
+
+
+@pytest.mark.parametrize("backend", ["python", "rust"])
+@pytest.mark.parametrize("mutation", ["register", "alias"])
+def test_callback_invalidates_previously_cached_builtin_dispatch(backend, mutation):
+    fixture = CatalogFixture()
+    key = fixture.object("mscorlib", "System.Int32", fixture.record("<i", 5))
+    marker = fixture.object("Custom", "Marker")
+    empty = fixture.array([])
+    data = fixture.finish([key, empty, marker, empty, key, empty])
+    registry = DecoderRegistry()
+    registry.register("Replacement", lambda context: 99)
+
+    @registry.register("Custom; Marker")
+    def change(context):
+        if mutation == "register":
+            registry.register("mscorlib; System.Int32", lambda context: 99)
+        else:
+            registry.alias("mscorlib; System.Int32", "Replacement")
+        return "changed"
+
+    assert list(parse_binary(data, registry, backend=backend).resources) == [5, "changed", 99]
+
+
+@pytest.mark.parametrize("backend", ["python", "rust"])
+@pytest.mark.parametrize("name,fmt,value", [
+    ("System.Int32", "<i", 12), ("System.Int64", "<q", 34),
+    ("System.Boolean", "<B", 1), ("UnityEngine.Hash128", "<16s", bytes(range(16))),
+])
+def test_builtin_decoding_preserves_callback_reader_position(backend, name, fmt, value):
+    import struct
+
+    fixture = CatalogFixture()
+    payload = fixture.record(fmt, value)
+    assembly = "UnityEngine.CoreModule" if name == "UnityEngine.Hash128" else "mscorlib"
+    key = fixture.object(assembly, name, payload)
+    metadata = fixture.object("Custom", "Cursor")
+    data = fixture.finish([key, fixture.array([fixture.location(metadata)])])
+    registry = DecoderRegistry()
+    registry.register("Custom; Cursor", lambda context: context.reader.tell())
+    result = parse_binary(data, registry, backend=backend)
+    assert next(iter(result.resources.values()))[0].data == payload + struct.calcsize(fmt)
+
+
+def test_instance_registry_override_keeps_per_object_resolution(monkeypatch):
+    from addressablestools import catalog
+
+    fixture = CatalogFixture()
+    key = fixture.object("Custom", "Value")
+    data = fixture.finish([key, fixture.array([fixture.location(key)])])
+    registry = DecoderRegistry()
+    calls = []
+
+    def resolve(name):
+        calls.append(name)
+        return "mscorlib; System.Int32"
+
+    registry._resolve = resolve
+    monkeypatch.setattr(catalog, "_native_decode_registry_fast", lambda *args: pytest.fail("fast path"))
+    assert parse_binary(data, registry, backend="rust").resources[0][0].data == 0
+    assert calls == ["Custom; Value", "Custom; Value"]
+
+
+@pytest.mark.parametrize("backend", ["python", "rust"])
+@pytest.mark.parametrize("name,fmt,value,replacement", [
+    ("System.Int32", "<i", 12, 33), ("System.Int64", "<q", 34, 55),
+    ("System.Boolean", "<B", 0, 1),
+    ("UnityEngine.Hash128", "<16s", bytes(16), bytes(range(16))),
+])
+def test_scalar_decoding_observes_callback_stream_writes(backend, name, fmt, value, replacement):
+    import struct
+    from addressablestools.models import Hash128
+
+    fixture = CatalogFixture()
+    payload = fixture.record(fmt, value)
+    assembly = "UnityEngine.CoreModule" if name == "UnityEngine.Hash128" else "mscorlib"
+    key = fixture.object(assembly, name, payload)
+    marker = fixture.object("Custom", "Marker")
+    empty = fixture.array([])
+    data = fixture.finish([marker, empty, key, empty])
+    registry = DecoderRegistry()
+
+    @registry.register("Custom; Marker")
+    def change(context):
+        context.reader.seek(payload)
+        context.reader.stream.write(struct.pack(fmt, replacement))
+        return "changed"
+
+    result = parse_binary(data, registry, backend=backend)
+    expected = Hash128(replacement.hex()) if name == "UnityEngine.Hash128" else replacement
+    assert list(result.resources) == ["changed", expected]
+
+
 @pytest.mark.parametrize("backend", ["python", "rust", "auto"])
 @pytest.mark.parametrize("version", [1, 2, 3])
 @pytest.mark.parametrize("default", [False, True])

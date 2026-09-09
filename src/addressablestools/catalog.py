@@ -10,6 +10,7 @@ from typing import Mapping, Sequence, TypeVar, cast
 from addressablestools._native import decode_resources as _native_decode
 from addressablestools._native import decode_json_resources as _native_decode_json
 from addressablestools._native import decode_registry_resources as _native_decode_registry
+from addressablestools._native import decode_registry_resources_fast as _native_decode_registry_fast
 from addressablestools._native import Backend, select_decoder, validate_backend
 from addressablestools.binary import (
     UINT32_MAX,
@@ -390,6 +391,18 @@ def _decode_binary_resources(
             def decode_object(offset: int) -> tuple[object, SerializedType | None]:
                 return SerializedObjectDecoder._decode_v2(reader, offset, registry)
 
+            if (
+                _native_decode_registry_fast is not None
+                and type(registry) is DecoderRegistry
+                and "_resolve" not in vars(registry)
+                and "_get" not in vars(registry)
+                and "register" not in vars(registry)
+                and "alias" not in vars(registry)
+            ):
+                return _native_decode_registry_fast(
+                    reader._buffer, reader.version, header.keys_offset, reader._object_cache,
+                    decode_object, registry, reader,
+                )
             return registry_decoder(
                 reader._buffer, reader.version, header.keys_offset, reader._object_cache, decode_object,
             )

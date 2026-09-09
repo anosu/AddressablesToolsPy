@@ -81,6 +81,42 @@ impl<'py> Parser<'py> {
         Ok(index as usize)
     }
 
+    fn expand_internal_id(
+        &self,
+        value: &Py<PyAny>,
+        prefixes: &Bound<'py, PyList>,
+    ) -> PyResult<Py<PyAny>> {
+        let text = value.bind(self.py).cast::<PyString>()?;
+        if let Ok(text) = text.to_str() {
+            let Some(split) = text.find('#') else {
+                return Ok(value.clone_ref(self.py));
+            };
+            let index = &text[..split];
+            // Python int also accepts signs, whitespace, underscores and Unicode digits.
+            // Keep that slow path, including integer-string limits and lone surrogates.
+            if !index.is_empty() && index.len() <= 19 && index.bytes().all(|b| b.is_ascii_digit()) {
+                if let Ok(index) = index.parse::<usize>() {
+                    if index >= prefixes.len() {
+                        return Ok(value.clone_ref(self.py));
+                    }
+                    let prefix = prefixes.get_item(index)?;
+                    if let Ok(prefix) = prefix.cast::<PyString>()?.to_str() {
+                        return Ok(PyString::new(
+                            self.py,
+                            &format!("{prefix}{}", &text[split + 1..]),
+                        )
+                        .into_any()
+                        .unbind());
+                    }
+                }
+            }
+        }
+        Ok(self
+            .expand_id
+            .call1((value.bind(self.py), prefixes))?
+            .unbind())
+    }
+
     fn text(&self, data: &[u8], unicode: bool) -> PyResult<Py<PyAny>> {
         if !unicode && data.is_ascii() {
             let text = std::str::from_utf8(data).expect("ASCII is valid UTF-8");
@@ -239,13 +275,12 @@ impl<'py> Parser<'py> {
             .ok_or_else(|| self.invalid("location size overflow"))?;
         let records = self.bytes(entry_data, 4, size)?;
         let mut internal_ids: Vec<Py<PyAny>> = catalog.getattr("internal_ids")?.extract()?;
-        let prefixes = catalog.getattr("internal_id_prefixes")?;
-        if prefixes.len()? != 0 {
+        let prefixes = catalog
+            .getattr("internal_id_prefixes")?
+            .cast_into::<PyList>()?;
+        if !prefixes.is_empty() {
             for value in &mut internal_ids {
-                *value = self
-                    .expand_id
-                    .call1((value.bind(self.py), &prefixes))?
-                    .unbind();
+                *value = self.expand_internal_id(value, &prefixes)?;
             }
         }
         let providers: Vec<Py<PyAny>> = catalog.getattr("provider_ids")?.extract()?;

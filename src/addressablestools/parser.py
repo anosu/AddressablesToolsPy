@@ -52,8 +52,8 @@ def parse_binary(
 
     Args:
         data: Complete binary catalog payload.
-        registry: Optional per-parse custom decoder registry. Native API 3 uses
-            Python object callbacks with Rust resource traversal.
+        registry: Optional per-parse custom decoder registry. Native decoding keeps
+            custom callbacks in Python and accelerates supported built-in objects.
         backend: Auto selection, pure Python, or an explicitly required Rust backend.
     """
 

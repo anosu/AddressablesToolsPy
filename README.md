@@ -72,8 +72,9 @@ reference = parse_json(data, backend="python")
 ```
 
 `auto` uses Python when the extension is missing or incompatible. Native API 3
-(companion package 0.3) also supports `DecoderRegistry`: Rust traverses resources
-and dependencies while Python handles object dispatch and custom callbacks.
+(companion package 0.3) also supports `DecoderRegistry`. Since companion 0.3.1,
+standard registries keep built-in decoding in Rust and call Python only for custom
+decoders. Calls to `register()` and `alias()` invalidate cached dispatch decisions.
 `rust` requires native support and raises
 `NativeBackendUnavailableError` instead of silently falling back. Backend selection
 is local to each call. The deprecated API accepts the same keyword; patchers and
@@ -147,7 +148,8 @@ Decoder functions receive the exact serialized type together with the object off
 With companion 0.3 or newer compatible native support installed, these calls use
 Rust resource traversal automatically. Add `backend="rust"` to require it or
 `backend="python"` to use the reference parser. Decoder functions keep running in
-Python with the same reader and shared object cache.
+Python with the same reader and shared object cache. Registry subclasses and
+instance overrides of resolution methods retain the per-object Python bridge.
 
 ```python
 from dataclasses import dataclass

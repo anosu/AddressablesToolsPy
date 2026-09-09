@@ -3,9 +3,14 @@
 from collections.abc import Callable
 from importlib import import_module
 from typing import Literal, cast
+from typing import TYPE_CHECKING
 
 from addressablestools.exceptions import NativeBackendUnavailableError
 from addressablestools.models import ContentCatalogData, ResourceLocation, SerializedType
+
+if TYPE_CHECKING:
+    from addressablestools.binary import CatalogBinaryReader
+    from addressablestools.decoder import DecoderRegistry
 
 type Backend = Literal["auto", "python", "rust"]
 
@@ -22,9 +27,16 @@ type DecodeRegistryResources = Callable[
     dict[object, list[ResourceLocation]],
 ]
 
+type DecodeRegistryResourcesFast = Callable[
+    [bytes, int, int, dict[int, object], Callable[[int], tuple[object, SerializedType | None]],
+     "DecoderRegistry", "CatalogBinaryReader"],
+    dict[object, list[ResourceLocation]],
+]
+
 decode_resources: DecodeResources | None = None
 decode_json_resources: DecodeJsonResources | None = None
 decode_registry_resources: DecodeRegistryResources | None = None
+decode_registry_resources_fast: DecodeRegistryResourcesFast | None = None
 _load_error: str | None = None
 try:
     _extension = import_module("_addressablestools_rust")
@@ -42,6 +54,10 @@ else:
         if _version >= 3 and callable(getattr(_extension, "decode_resources_with_registry", None)):
             decode_registry_resources = cast(
                 DecodeRegistryResources, _extension.decode_resources_with_registry,
+            )
+        if _version >= 3 and callable(getattr(_extension, "decode_resources_with_registry_fast", None)):
+            decode_registry_resources_fast = cast(
+                DecodeRegistryResourcesFast, _extension.decode_resources_with_registry_fast,
             )
 
 

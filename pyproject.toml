@@ -14,7 +14,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-native = ["addressablestools-rust>=0.3,<0.4"]
+native = ["addressablestools-rust>=0.3.1,<0.4"]
 
 [tool.uv.sources]
 addressablestools-rust = { path = "native" }

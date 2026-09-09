@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyList, PyString, PyType};
+use pyo3::types::{PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
 use pyo3::IntoPyObjectExt;
 
 const NULL: u32 = u32::MAX;
@@ -16,16 +16,20 @@ enum Kind {
     String,
     Hash,
     Bundle,
+    Custom,
     Unsupported,
 }
 
-struct Parser<'py, 'data> {
+struct Parser<'py, 'data, const FAST_REGISTRY: bool> {
     py: Python<'py>,
     data: &'data [u8],
     version: u32,
     objects: HashMap<u32, Py<PyAny>>,
     shared_objects: Option<Bound<'py, PyDict>>,
     object_decoder: Option<Bound<'py, PyAny>>,
+    registry: Option<Bound<'py, PyAny>>,
+    reader: Option<Bound<'py, PyAny>>,
+    revision: u64,
     strings: HashMap<(u32, u8), Py<PyAny>>,
     kinds: HashMap<u32, (Kind, String)>,
     location_class: Bound<'py, PyAny>,
@@ -38,7 +42,7 @@ struct Parser<'py, 'data> {
     unsupported_error: Bound<'py, PyType>,
 }
 
-impl<'py, 'data> Parser<'py, 'data> {
+impl<'py, 'data, const FAST_REGISTRY: bool> Parser<'py, 'data, FAST_REGISTRY> {
     fn new(
         py: Python<'py>,
         data: &'data [u8],
@@ -61,6 +65,9 @@ impl<'py, 'data> Parser<'py, 'data> {
             objects,
             shared_objects: object_decoder.as_ref().map(|_| cached.clone()),
             object_decoder,
+            registry: None,
+            reader: None,
+            revision: 0,
             strings: HashMap::new(),
             kinds: HashMap::new(),
             location_class: models.getattr("ResourceLocation")?,
@@ -231,19 +238,40 @@ impl<'py, 'data> Parser<'py, 'data> {
         }
         // Keep live registry resolution and callback semantics in the reference decoder.
         // The shared object cache preserves identity across Python and Rust traversal.
-        if let Some(decoder) = &self.object_decoder {
-            return decoder.call1((offset,))?.extract();
+        if !FAST_REGISTRY {
+            if let Some(decoder) = &self.object_decoder {
+                return decoder.call1((offset,))?.extract();
+            }
         }
         let record = self.bytes(offset, 8)?;
         let type_offset = word(record);
         let payload = word(&record[4..]);
         let serialized_type = self.serialized_type(type_offset)?;
+        if FAST_REGISTRY {
+            let registry = self.registry.as_ref().expect("registry configured");
+            let revision = registry.getattr("_revision")?.extract()?;
+            if self.revision != revision {
+                self.kinds.clear();
+                self.revision = revision;
+            }
+        }
         if !self.kinds.contains_key(&type_offset) {
             let name: String = serialized_type
                 .bind(self.py)
                 .call_method1("match_name_for_version", (self.version,))?
                 .extract()?;
-            let kind = match name.as_str() {
+            let (resolved, custom) = if FAST_REGISTRY {
+                let registry = self.registry.as_ref().expect("registry configured");
+                let resolved = registry.call_method1("_resolve", (&name,))?;
+                let custom = !registry.call_method1("_get", (&resolved,))?.is_none();
+                (resolved.extract::<String>()?, custom)
+            } else {
+                (name.clone(), false)
+            };
+            let kind = if custom {
+                Kind::Custom
+            } else {
+                match resolved.as_str() {
                 "mscorlib; System.Int32" | "System.Int32" => Kind::Int,
                 "mscorlib; System.Int64" | "System.Int64" => Kind::Long,
                 "mscorlib; System.Boolean" | "System.Boolean" => Kind::Bool,
@@ -251,11 +279,44 @@ impl<'py, 'data> Parser<'py, 'data> {
                 "UnityEngine.CoreModule; UnityEngine.Hash128" => Kind::Hash,
                 "Unity.ResourceManager; UnityEngine.ResourceManagement.ResourceProviders.AssetBundleRequestOptions" => Kind::Bundle,
                 _ => Kind::Unsupported,
+            }
             };
             self.kinds.insert(type_offset, (kind, name));
         }
         let kind = self.kinds[&type_offset].0;
+        // Callbacks can modify the BytesIO stream. Scalar decoders historically
+        // read that stream, unlike strings/bundles which use the immutable buffer.
+        if FAST_REGISTRY && payload != NULL {
+            if let Some(reader) = &self.reader {
+                let method = match kind {
+                    Kind::Int => Some("read_int32"),
+                    Kind::Long => Some("read_int64"),
+                    Kind::Bool => Some("read_boolean"),
+                    Kind::Hash => Some("read_four_uint32"),
+                    _ => None,
+                };
+                if let Some(method) = method {
+                    reader.call_method1("seek", (payload,))?;
+                    let value = reader.call_method0(method)?;
+                    let value = if matches!(kind, Kind::Hash) {
+                        self.hash_class
+                            .call_method1("from_uint32s", value.cast::<PyTuple>()?)?
+                    } else {
+                        value
+                    };
+                    return Ok((value.unbind(), serialized_type));
+                }
+            }
+        }
         let value = match kind {
+            Kind::Custom => {
+                return self
+                    .object_decoder
+                    .as_ref()
+                    .expect("registry decoder configured")
+                    .call1((offset,))?
+                    .extract();
+            }
             Kind::Int => {
                 let value = if payload == NULL {
                     0
@@ -332,6 +393,9 @@ impl<'py, 'data> Parser<'py, 'data> {
         let data = self.bytes(offset, 20)?;
         let hash = hex(self.bytes(word(data), 16)?);
         let common = self.common(word(&data[16..]))?;
+        if FAST_REGISTRY {
+            common.bind(self.py).setattr("version", 3)?;
+        }
         let name = self.string(word(&data[4..]), b'_')?;
         let value = self
             .bundle_class
@@ -486,7 +550,7 @@ pub fn decode_resources(
     keys_offset: u32,
     cached: &Bound<'_, PyDict>,
 ) -> PyResult<Py<PyDict>> {
-    Parser::new(py, data, version, cached, None)?.resources(keys_offset)
+    Parser::<false>::new(py, data, version, cached, None)?.resources(keys_offset)
 }
 
 #[pyfunction]
@@ -498,5 +562,23 @@ pub fn decode_resources_with_registry<'py>(
     cached: &Bound<'py, PyDict>,
     object_decoder: Bound<'py, PyAny>,
 ) -> PyResult<Py<PyDict>> {
-    Parser::new(py, data, version, cached, Some(object_decoder))?.resources(keys_offset)
+    Parser::<false>::new(py, data, version, cached, Some(object_decoder))?.resources(keys_offset)
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub fn decode_resources_with_registry_fast<'py>(
+    py: Python<'py>,
+    data: &[u8],
+    version: u32,
+    keys_offset: u32,
+    cached: &Bound<'py, PyDict>,
+    object_decoder: Bound<'py, PyAny>,
+    registry: Bound<'py, PyAny>,
+    reader: Bound<'py, PyAny>,
+) -> PyResult<Py<PyDict>> {
+    let mut parser = Parser::<true>::new(py, data, version, cached, Some(object_decoder))?;
+    parser.registry = Some(registry);
+    parser.reader = Some(reader);
+    parser.resources(keys_offset)
 }
