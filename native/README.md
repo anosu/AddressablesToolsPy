@@ -73,7 +73,8 @@ uv build native --wheel --sdist --out-dir dist/native
 ```
 
 Wheels use CPython's stable ABI starting at Python 3.12 and are platform-specific.
-Installing a compatible prebuilt wheel does not require Rust. The companion package
+Installing a compatible prebuilt wheel does not require Rust. Building from source
+requires Rust 1.88 or newer. The companion package
 has its own version and build configuration; the main package's existing PyPI
 publishing workflow is unchanged. No companion release has been published by this change.
 

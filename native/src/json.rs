@@ -257,7 +257,7 @@ impl<'py> Parser<'py> {
         let primary_override: Option<Vec<Py<PyAny>>> = catalog.getattr("keys")?.extract()?;
         let primary_keys = primary_override.as_ref().unwrap_or(&keys);
         let mut locations = Vec::with_capacity(entry_count as usize);
-        for record in records.chunks_exact(28) {
+        for record in records.as_chunks::<28>().0.iter() {
             let internal = self.index(word(record), internal_ids.len(), "internal ID")?;
             let provider = self.index(word(&record[4..]), providers.len(), "provider ID")?;
             let dependency = word(&record[8..]);
@@ -303,13 +303,15 @@ impl<'py> Parser<'py> {
         let result = PyDict::new(self.py);
         for (key, bucket) in keys.iter().zip(&buckets) {
             let entries = &bucket_data[bucket.entries.clone()];
-            for entry in entries.chunks_exact(4) {
+            for entry in entries.as_chunks::<4>().0.iter() {
                 self.index(word(entry), locations.len(), "bucket resource location")?;
             }
             let values = PyList::new(
                 self.py,
                 entries
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|entry| locations[word(entry) as usize].bind(self.py)),
             )?;
             result.set_item(key, values)?;

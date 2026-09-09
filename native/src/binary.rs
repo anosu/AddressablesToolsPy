@@ -347,7 +347,7 @@ impl<'py, 'data> Parser<'py, 'data> {
         }
         let record = self.bytes(root, 28)?;
         let mut ready = true;
-        for entry in self.array(word(&record[12..]))?.chunks_exact(4) {
+        for entry in self.array(word(&record[12..]))?.as_chunks::<4>().0.iter() {
             if !self.is_cached(word(entry))? {
                 ready = false;
                 break;
@@ -372,7 +372,7 @@ impl<'py, 'data> Parser<'py, 'data> {
                     )));
                 }
                 pending.push((offset, true));
-                for entry in dependencies.chunks_exact(4).rev() {
+                for entry in dependencies.as_chunks::<4>().0.iter().rev() {
                     let child = word(entry);
                     if !self.is_cached(child)? {
                         pending.push((child, false));
@@ -396,14 +396,18 @@ impl<'py, 'data> Parser<'py, 'data> {
             PyList::new(
                 self.py,
                 self.array(word(&record[12..]))?
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|entry| self.objects[&word(entry)].bind(self.py)),
             )?
         } else {
             PyList::new(
                 self.py,
                 self.array(word(&record[12..]))?
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|entry| {
                         self.cached(word(entry))?
                             .ok_or_else(|| self.invalid("missing decoded dependency"))
@@ -440,14 +444,16 @@ impl<'py, 'data> Parser<'py, 'data> {
             return Err(self.invalid("key/location offset array must contain pairs"));
         }
         let result = PyDict::new(self.py);
-        for pair in keys.chunks_exact(8) {
+        for pair in keys.as_chunks::<8>().0.iter() {
             let (key, _) = self.object(word(pair))?;
             let offsets = self.array(word(&pair[4..]))?;
             let locations = if offsets.len() == 4 {
                 PyList::new(self.py, [self.location(word(offsets))?])?
             } else {
                 let values = offsets
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|entry| self.location(word(entry)))
                     .collect::<PyResult<Vec<_>>>()?;
                 PyList::new(self.py, values)?

@@ -36,6 +36,9 @@ jobs:
       - run: uv run --no-sync python -m mypy
       - run: cargo fmt --manifest-path native/Cargo.toml --check
       - run: cargo clippy --locked --manifest-path native/Cargo.toml --lib -- -D warnings
+      - name: Set up minimum supported Rust
+        uses: dtolnay/rust-toolchain@1.88.0
+      - run: cargo check --locked --manifest-path native/Cargo.toml --lib
 
   packages:
     name: Build Python wheel and native sdist
