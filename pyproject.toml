@@ -1,35 +1,38 @@
 [build-system]
-requires = ["setuptools>=77"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
 
 [project]
 name = "addressablestools"
-version = "1.0.0"
+version = "1.1.0"
 authors = [{ name = "Jitsu", email = "jitsu233@gmail.com" }]
 description = "Python library for reading Unity Addressables catalog files"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
-dependencies = ["addressablestools-rust>=0.3.1,<0.4"]
+dependencies = []
 
 [project.optional-dependencies]
-# Retain the old extra as a compatibility alias; acceleration is installed by default.
+# Compatibility alias; the native module is included in every wheel.
 native = []
 
-[tool.uv.sources]
-addressablestools-rust = { path = "native" }
-
-[tool.setuptools]
-package-dir = { "" = "src" }
-py-modules = ["AddressablesTools"]
-
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["addressablestools*"]
-
-[tool.setuptools.package-data]
-addressablestools = ["py.typed"]
+[tool.maturin]
+manifest-path = "native/Cargo.toml"
+python-source = "src"
+module-name = "addressablestools._rust"
+include = [
+    { path = "AddressablesTools.py", format = ["sdist", "wheel"] },
+    { path = "CHANGELOG.md", format = "sdist" },
+    { path = "PUBLISHING.md", format = "sdist" },
+    { path = "tests/*.py", format = "sdist" },
+    { path = "tests/samples/*", format = "sdist" },
+    { path = "benchmarks/*.py", format = "sdist" },
+    { path = "benchmarks/*.md", format = "sdist" },
+    { path = ".github/workflows/*.yml", format = "sdist" },
+    { path = ".gitignore", format = "sdist" },
+    { path = "uv.lock", format = "sdist" },
+]
 
 [project.urls]
 "Homepage" = "https://github.com/anosu/AddressablesToolsPy"

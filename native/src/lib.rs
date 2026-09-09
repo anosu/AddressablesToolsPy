@@ -1,4 +1,4 @@
-//! Optional resource decoding backends sharing the public Python model types.
+//! Bundled resource decoding backends sharing the public Python model types.
 
 mod binary;
 mod json;
@@ -6,7 +6,7 @@ mod json;
 use pyo3::prelude::*;
 
 #[pymodule]
-fn _addressablestools_rust(module: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _rust(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("API_VERSION", 3)?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     module.add_function(wrap_pyfunction!(binary::decode_resources, module)?)?;

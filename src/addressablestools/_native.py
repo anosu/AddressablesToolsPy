@@ -39,13 +39,13 @@ decode_registry_resources: DecodeRegistryResources | None = None
 decode_registry_resources_fast: DecodeRegistryResourcesFast | None = None
 _load_error: str | None = None
 try:
-    _extension = import_module("_addressablestools_rust")
+    _extension = import_module("addressablestools._rust")
 except (ImportError, OSError) as exc:
-    _load_error = f"cannot load addressablestools-rust: {exc}"
+    _load_error = f"cannot load the bundled addressablestools._rust module: {exc}"
 else:
     _version = getattr(_extension, "API_VERSION", None)
     if type(_version) is not int or _version not in (1, 2, 3):
-        _load_error = f"unsupported native API version {_version!r}; rebuild addressablestools-rust"
+        _load_error = f"unsupported native API version {_version!r}; rebuild addressablestools"
     else:
         if callable(getattr(_extension, "decode_resources", None)):
             decode_resources = cast(DecodeResources, _extension.decode_resources)

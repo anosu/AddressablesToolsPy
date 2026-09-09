@@ -1,5 +1,9 @@
 # Catalog parsing benchmarks
 
+Version 1.1 bundles the Python API and Rust module in one `addressablestools`
+wheel. The 0.3.x native version numbers below identify earlier development builds
+of the same parsing implementation; the standalone companion is no longer needed.
+
 Run from the repository root:
 
 ```shell

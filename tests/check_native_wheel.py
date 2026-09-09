@@ -17,7 +17,7 @@ def main() -> None:
         raise ValueError(f"expected exactly one native wheel, found {len(wheels)}")
     wheel = wheels[0]
     root = Path(__file__).resolve().parents[1]
-    with (root / "native" / "pyproject.toml").open("rb") as stream:
+    with (root / "pyproject.toml").open("rb") as stream:
         version = tomllib.load(stream)["project"]["version"]
     with ZipFile(wheel) as archive:
         wheel_metadata = [name for name in archive.namelist() if name.endswith(".dist-info/WHEEL")]
@@ -29,10 +29,16 @@ def main() -> None:
         expected = f"cp312-abi3-{args.platform}"
         if expected not in tags or any(not tag.startswith("cp312-abi3-") for tag in tags):
             raise ValueError(f"expected {expected}, found {tags}")
-        if metadata["Name"] != "addressablestools-rust" or metadata["Version"] != version:
-            raise ValueError("wheel package name/version does not match native/pyproject.toml")
-        if not any(name.endswith((".so", ".pyd")) for name in archive.namelist()):
-            raise ValueError("native extension is missing from wheel")
+        if metadata["Name"] != "addressablestools" or metadata["Version"] != version:
+            raise ValueError("wheel package name/version does not match pyproject.toml")
+        if metadata.get_all("Requires-Dist", []):
+            raise ValueError("the unified wheel must not depend on a separate runtime package")
+        names = archive.namelist()
+        if not {"AddressablesTools.py", "addressablestools/__init__.py", "addressablestools/py.typed"} <= set(names):
+            raise ValueError("Python API, legacy module or typing marker is missing")
+        extensions = [name for name in names if name.endswith((".so", ".pyd"))]
+        if len(extensions) != 1 or not extensions[0].startswith("addressablestools/_rust."):
+            raise ValueError("expected one bundled addressablestools._rust extension")
     print(f"{wheel.name}: {expected}, version {version}")
 
 

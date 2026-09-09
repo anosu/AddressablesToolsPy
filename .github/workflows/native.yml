@@ -1,17 +1,19 @@
-name: Build and verify native wheels
+name: Build and verify release wheels
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
-    paths: ["native/**", "src/**", "tests/**", "benchmarks/**", "pyproject.toml", "uv.lock", ".github/workflows/native.yml"]
+    branches: ["**"]
+    paths: ["native/**", "src/**", "tests/**", "benchmarks/**", "pyproject.toml", "uv.lock", ".github/workflows/**", "README.md", "CHANGELOG.md", "PUBLISHING.md"]
   pull_request:
-    paths: ["native/**", "src/**", "tests/**", "benchmarks/**", "pyproject.toml", "uv.lock", ".github/workflows/native.yml"]
+    paths: ["native/**", "src/**", "tests/**", "benchmarks/**", "pyproject.toml", "uv.lock", ".github/workflows/**", "README.md", "CHANGELOG.md", "PUBLISHING.md"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-wheels-${{ github.ref }}
+  group: release-wheels-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -29,10 +31,12 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: python -m pip install uv
-      - run: uv sync --locked --no-install-package addressablestools-rust
+      - run: uv sync --locked --only-group dev
       - name: Test without native extension
+        env:
+          PYTHONPATH: src
         run: |
-          uv run --no-sync python -c 'from importlib.util import find_spec; assert find_spec("_addressablestools_rust") is None'
+          uv run --no-sync python -c 'from importlib.util import find_spec; assert find_spec("addressablestools._rust") is None'
           uv run --no-sync python -m pytest -q
       - run: uv run --no-sync python -m ruff check .
       - run: uv run --no-sync python -m mypy
@@ -43,7 +47,7 @@ jobs:
       - run: cargo check --locked --manifest-path native/Cargo.toml --lib
 
   packages:
-    name: Build Python wheel and native sdist
+    name: Build and verify source distribution
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -54,24 +58,19 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
       - run: python -m pip install uv
-      - run: uv build --wheel --no-sources --out-dir dist/python
-      - name: Build native source distribution
+      - name: Build complete source distribution
         uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8 # v1
         with:
           maturin-version: v1.15.0
           command: sdist
-          args: --manifest-path native/Cargo.toml --out dist/native
+          args: --manifest-path native/Cargo.toml --out dist/sdist
       - name: Check distribution metadata
-        run: uvx twine check --strict dist/python/* dist/native/*
+        run: uvx twine check --strict dist/sdist/*
+      - run: python tests/check_sdist.py dist/sdist
       - uses: actions/upload-artifact@v7
         with:
-          name: python-wheel
-          path: dist/python/*.whl
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-sdist
-          path: dist/native/*.tar.gz
+          name: package-sdist
+          path: dist/sdist/*.tar.gz
           if-no-files-found: error
 
   wheels:
@@ -130,8 +129,19 @@ jobs:
       - run: python -m pip install uv
       - uses: actions/download-artifact@v8
         with:
-          name: python-wheel
-          path: dist/python
+          name: package-sdist
+          path: dist/sdist
+      - name: Extract the verified source distribution
+        id: source
+        shell: bash
+        run: |
+          mkdir build-source
+          archives=(dist/sdist/*.tar.gz)
+          test "${#archives[@]}" -eq 1
+          tar -xzf "${archives[0]}" -C build-source
+          roots=(build-source/*)
+          test "${#roots[@]}" -eq 1
+          echo "path=${roots[0]}" >> "$GITHUB_OUTPUT"
       - name: Set macOS minimum deployment version
         if: runner.os == 'macOS'
         shell: bash
@@ -142,38 +152,46 @@ jobs:
         uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8 # v1
         with:
           maturin-version: v1.15.0
+          working-directory: ${{ steps.source.outputs.path }}
           target: ${{ matrix.target }}
           container: ${{ matrix.container }}
           manylinux: ${{ matrix.manylinux }}
-          args: --release --locked --manifest-path native/Cargo.toml --out dist/native --interpreter ${{ matrix.interpreter }}
+          args: --release --locked --manifest-path native/Cargo.toml --out dist/wheels --interpreter ${{ matrix.interpreter }}
+      - name: Collect the wheel built from the source archive
+        shell: bash
+        env:
+          SOURCE_ROOT: ${{ steps.source.outputs.path }}
+        run: |
+          mkdir -p dist/wheels
+          cp "$SOURCE_ROOT"/dist/wheels/*.whl dist/wheels/
       - name: Check wheel metadata, platform tag and stable ABI
         shell: bash
         env:
           WHEEL_PLATFORM: ${{ matrix.wheel-platform }}
         run: |
-          uvx twine check --strict dist/native/*.whl
-          python tests/check_native_wheel.py dist/native --platform "$WHEEL_PLATFORM"
-          uvx abi3audit --strict --summary dist/native/*.whl
+          uvx twine check --strict dist/wheels/*.whl
+          python tests/check_native_wheel.py dist/wheels --platform "$WHEEL_PLATFORM"
+          uvx abi3audit --strict --summary dist/wheels/*.whl
       - name: Audit Linux external library requirements
         if: runner.os == 'Linux'
         shell: bash
-        run: uvx auditwheel show dist/native/*.whl
+        run: uvx auditwheel show dist/wheels/*.whl
       - name: Download test dependencies for offline installation checks
         run: |
           python -m pip download --only-binary=:all: --dest dist/test-dependencies pytest
       - name: Verify default installation on Python 3.12 and 3.14
         shell: bash
         run: |
-          python_wheels=(dist/python/*.whl)
+          python_wheels=(dist/wheels/*.whl)
           for python_version in 3.12 3.14; do
-            uv run --isolated --no-project --no-build --no-index --python "$python_version" --find-links dist/native --with "${python_wheels[0]}" python tests/smoke_wheels.py
-            uv run --isolated --no-project --no-build --no-index --python "$python_version" --find-links dist/native --find-links dist/test-dependencies --with "${python_wheels[0]}" --with pytest python -m pytest -q -o pythonpath=
+            uv run --isolated --no-project --no-build --no-index --python "$python_version" --with "${python_wheels[0]}" python tests/smoke_wheels.py
+            uv run --isolated --no-project --no-build --no-index --python "$python_version" --find-links dist/test-dependencies --with "${python_wheels[0]}" --with pytest python -m pytest -q -o pythonpath=
           done
       - name: Store verified wheel
         uses: actions/upload-artifact@v7
         with:
-          name: native-wheel-${{ matrix.platform }}
-          path: dist/native/*.whl
+          name: package-wheel-${{ matrix.platform }}
+          path: dist/wheels/*.whl
           if-no-files-found: error
 
   collect:
@@ -181,20 +199,26 @@ jobs:
     needs: [checks, packages, wheels]
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
       - uses: actions/download-artifact@v8
         with:
-          pattern: native-*
+          pattern: package-*
           merge-multiple: true
-          path: dist/native
-      - name: Require all five wheels and one source distribution
-        shell: bash
-        run: |
-          wheels=(dist/native/*.whl)
-          sdists=(dist/native/*.tar.gz)
-          test "${#wheels[@]}" -eq 5
-          test "${#sdists[@]}" -eq 1
+          path: dist/release
+      - name: Verify the complete release set
+        run: python tests/check_release_artifacts.py dist/release --manifest dist/verification.json
       - uses: actions/upload-artifact@v7
         with:
-          name: addressablestools-rust-distributions
-          path: dist/native/
+          name: addressablestools-distributions
+          path: dist/release/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-verification
+          path: dist/verification.json
           if-no-files-found: error

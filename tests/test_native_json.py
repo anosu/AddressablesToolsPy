@@ -44,7 +44,7 @@ def test_prefix_fast_path_preserves_python_integer_and_unicode_semantics(prefix,
 def test_ordinary_prefixes_do_not_call_python_helper(monkeypatch):
     from addressablestools import catalog
 
-    native = pytest.importorskip("_addressablestools_rust")
+    native = pytest.importorskip("addressablestools._rust")
     if not hasattr(native, "decode_resources_with_registry_fast"):
         pytest.skip("requires native 0.3.1")
     monkeypatch.setattr(catalog, "_apply_internal_id_prefix", lambda *args: pytest.fail("Python prefix"))

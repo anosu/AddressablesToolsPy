@@ -11,7 +11,7 @@ from addressablestools import catalog as catalog_module
 from addressablestools.exceptions import BinaryReadError, UnsupportedSerializedObjectError
 from addressablestools.models import ResourceLocation
 
-native = pytest.importorskip("_addressablestools_rust")
+native = pytest.importorskip("addressablestools._rust")
 NULL = 0xFFFFFFFF
 
 

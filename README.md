@@ -13,11 +13,11 @@ tested against a broad catalog corpus.
 pip install addressablestools
 ```
 
-The next release installs `addressablestools-rust` by default. Standard CPython
-3.12+ on the [supported platforms](PUBLISHING.md#native-companion) installs a
-prebuilt wheel without a Rust toolchain. Platforms without a compatible wheel
-need Rust 1.88+ and a platform linker to build from source. `backend="python"`
-still selects the reference parser; it does not change installation dependencies.
+Version 1.1 includes the Python API and Rust accelerator in the same wheel, with
+no separate runtime dependency. Standard CPython 3.12+ on the
+[supported platforms](PUBLISHING.md#platforms) installs a prebuilt wheel without a
+Rust toolchain. Building from source requires Rust 1.88+ and a platform linker.
+`backend="python"` still selects the reference parser.
 
 ## Parse JSON catalogs
 
@@ -58,7 +58,7 @@ print(location.type.class_name if location.type else None)
 For reproducible parsing measurements and optimization results, see
 [the catalog benchmarks](benchmarks/README.md).
 
-The [Rust accelerator](native/README.md) is also installed by default from this checkout:
+To build the package, including its [Rust module](native/README.md), from this checkout:
 
 ```shell
 uv sync --locked
@@ -77,15 +77,14 @@ catalog = parse_json(data, backend="auto")
 reference = parse_json(data, backend="python")
 ```
 
-`auto` uses Python when the extension is missing or incompatible. Native API 3
-(companion package 0.3) also supports `DecoderRegistry`. Since companion 0.3.1,
-standard registries keep built-in decoding in Rust and call Python only for custom
+`auto` uses Python when the bundled extension is missing or incompatible.
+`DecoderRegistry` is supported: standard registries keep built-in dispatch in Rust
+and call the Python object decoder only for custom
 decoders. Calls to `register()` and `alias()` invalidate cached dispatch decisions.
 `rust` requires native support and raises
 `NativeBackendUnavailableError` instead of silently falling back. Backend selection
 is local to each call. The deprecated API accepts the same keyword; patchers and
-handlers use the same registry bridge. Older extensions fall back to Python for
-registries in auto mode.
+handlers use the same registry bridge.
 The previous `native` extra remains accepted as a compatibility alias.
 
 ## Auto-detect catalog format
@@ -152,8 +151,8 @@ catalog = parse_binary(Path("catalog.bin").read_bytes(), registry=registry)
 ```
 
 Decoder functions receive the exact serialized type together with the object offset.
-With companion 0.3 or newer compatible native support installed, these calls use
-Rust resource traversal automatically. Add `backend="rust"` to require it or
+These calls use the bundled Rust resource traversal automatically. Add
+`backend="rust"` to require it or
 `backend="python"` to use the reference parser. Decoder functions keep running in
 Python with the same reader and shared object cache. Registry subclasses and
 instance overrides of resolution methods retain the per-object Python bridge.

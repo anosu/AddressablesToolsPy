@@ -30,6 +30,7 @@ def test_invalid_backend_is_reported(backend, catalog_json_text: str, catalog_bi
 @pytest.mark.parametrize("mode", ["missing", "load_failure", "bad_api", "api1", "api2", "api3", "api3_partial"])
 def test_optional_extension_capabilities_and_fallback(mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
     def load(_name: str):
+        assert _name == "addressablestools._rust"
         if mode == "missing":
             raise ModuleNotFoundError("not installed")
         if mode == "load_failure":

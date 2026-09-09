@@ -1,4 +1,7 @@
 from pathlib import Path
+import tomllib
+
+import addressablestools
 
 
 def test_json_accelerator_dependency_is_removed_from_project_files() -> None:
@@ -29,19 +32,21 @@ def test_readme_documents_new_package_first() -> None:
     assert "## Custom binary object handling" in readme
 
 
-def test_project_version_is_100() -> None:
-    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
-
-    assert 'version = "1.0.0"' in pyproject
+def test_python_cargo_and_project_versions_agree() -> None:
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    cargo = tomllib.loads(Path("native/Cargo.toml").read_text(encoding="utf-8"))
+    assert project["project"]["version"] == cargo["package"]["version"] == addressablestools.__version__
+    assert project["project"]["dependencies"] == []
+    assert project["tool"]["maturin"]["module-name"] == "addressablestools._rust"
 
 
 def test_changelog_documents_current_release() -> None:
     changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
-    manifest = Path("MANIFEST.in").read_text(encoding="utf-8")
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
-    assert "## [1.0.0] - 2026-08-10" in changelog
+    assert f"## [{addressablestools.__version__}]" in changelog
     assert "Binary catalog versions 1 through 3" in changelog
-    assert "include CHANGELOG.md" in manifest
+    assert {"path": "CHANGELOG.md", "format": "sdist"} in project["tool"]["maturin"]["include"]
 
 
 def test_pypi_workflow_uses_trusted_publishing() -> None:
@@ -49,12 +54,12 @@ def test_pypi_workflow_uses_trusted_publishing() -> None:
     publishing_guide = Path("PUBLISHING.md").read_text(encoding="utf-8")
 
     assert "pypa/gh-action-pypi-publish@release/v1" in workflow
-    assert "actions/upload-artifact@v7" in workflow
+    assert "uses: ./.github/workflows/native.yml" in workflow
     assert "actions/download-artifact@v8" in workflow
     assert "id-token: write" in workflow
     assert "environment:" in workflow
     assert "name: pypi" in workflow
-    assert "uv sync --locked" in workflow
+    assert 'tags:' in workflow
     assert "PYPI_TOKEN" not in workflow
     assert "password:" not in workflow
     assert "Trusted Publishing" in publishing_guide
@@ -64,6 +69,6 @@ def test_project_declares_reproducible_build_backend_and_modern_license() -> Non
     pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
 
     assert "[build-system]" in pyproject
-    assert 'build-backend = "setuptools.build_meta"' in pyproject
+    assert 'build-backend = "maturin"' in pyproject
     assert 'license = "MIT"' in pyproject
     assert 'license-files = ["LICENSE"]' in pyproject
