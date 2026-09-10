@@ -210,4 +210,29 @@ for key, locations in catalog.Resources.items():
         print(locations[0].Data.Object.Crc)
 ```
 
+`catalog.Resources` lazily creates a normal dictionary of legacy location lists
+on first access and reuses it afterward. Repeated lookups such as
+`catalog.Resources[key][0].InternalId` no longer rebuild the entire catalog.
+
+The dictionary and lists are a cached snapshot: edits to them persist across
+accesses on that wrapper, without changing the underlying modern resource mapping.
+Location properties still read the underlying objects' current fields. If you
+change the modern resource mapping or want to discard snapshot edits, use
+`del catalog.Resources`; the next access rebuilds it. Separate catalog wrappers
+have separate snapshots. For new code, prefer `addressablestools` and its
+`catalog.resources` mapping.
+
+Within a resource snapshot, aliases for the same underlying location share one
+legacy location wrapper; each key still has its own list. `location.Dependencies`
+also caches a list snapshot and automatically rebuilds it if the underlying list
+is replaced. After in-place edits to the underlying list, or to discard edits to
+the snapshot, use `del location.Dependencies` to rebuild it on the next access.
+When aliases share a location wrapper, they also share this dependency snapshot.
+
+Repeated `location.Data.Object`, `location.Data.Type`, `location.Type`, and bundle
+`ComInfo` reads reuse metadata wrappers. Replacing the underlying data, type, or
+common-info object refreshes the relevant wrapper automatically; scalar field
+changes remain visible. Lists and dictionaries returned by custom decoders keep
+their existing behavior: each access wraps their current contents.
+
 The legacy `AddressablesTools.classes` module is also provided for existing imports while migration is in progress.

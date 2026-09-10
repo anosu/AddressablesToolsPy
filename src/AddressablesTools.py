@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import warnings
 from collections.abc import Callable
+from functools import cached_property
 from io import BytesIO
 from types import ModuleType
 from typing import Any, cast
@@ -56,6 +57,27 @@ __version__ = addressablestools.__version__
 class _CompatValue:
     def __init__(self, value: object) -> None:
         self._value = value
+
+    def _wrap_cached(
+        self,
+        name: str,
+        value: object,
+        serialized_type: SerializedType | None = None,
+    ) -> object:
+        """Reuse metadata wrappers while their source objects remain identical."""
+        if isinstance(value, (list, dict)):
+            # Custom decoder containers retain their existing live-copy behavior.
+            self.__dict__.pop(name, None)
+            return wrap_legacy(value)
+        cached: tuple[object, SerializedType | None, object] | None = self.__dict__.get(name)
+        if cached is not None and cached[0] is value and cached[1] is serialized_type:
+            return cached[2]
+        wrapped = (
+            CompatWrappedSerializedObject(serialized_type, value)
+            if serialized_type is not None else wrap_legacy(value)
+        )
+        self.__dict__[name] = (value, serialized_type, wrapped)
+        return wrapped
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, _CompatValue):
@@ -184,7 +206,7 @@ class CompatAssetBundleRequestOptions(_CompatValue):
 
     @property
     def ComInfo(self) -> object:
-        return wrap_legacy(self._value.common_info)
+        return self._wrap_cached("_common_info_cache", self._value.common_info)
 
     @property
     def BundleName(self) -> str | None:
@@ -209,11 +231,11 @@ class CompatWrappedSerializedObject(_CompatValue):
 
     @property
     def Type(self) -> object:
-        return wrap_legacy(self._type)
+        return self._wrap_cached("_type_cache", self._type)
 
     @property
     def Object(self) -> object:
-        return wrap_legacy(self._object)
+        return self._wrap_cached("_object_cache", self._object)
 
 
 class CompatResourceLocation(_CompatValue):
@@ -233,15 +255,23 @@ class CompatResourceLocation(_CompatValue):
 
     @property
     def Dependencies(self) -> object:
-        return wrap_legacy(self._value.dependencies)
+        """Cache a list snapshot; delete this property after in-place source edits."""
+        source = self._value.dependencies
+        cached: tuple[object, object] | None = self.__dict__.get("_dependencies_cache")
+        if cached is None or cached[0] is not source:
+            cached = (source, wrap_legacy(source))
+            self.__dict__["_dependencies_cache"] = cached
+        return cached[1]
+
+    @Dependencies.deleter
+    def Dependencies(self) -> None:
+        self.__dict__.pop("_dependencies_cache", None)
 
     @property
     def Data(self) -> object:
-        if isinstance(self._value.data, AssetBundleRequestOptions):
-            data_type = self._value._data_type
-            if data_type is not None:
-                return CompatWrappedSerializedObject(data_type, self._value.data)
-        return wrap_legacy(self._value.data)
+        data = self._value.data
+        data_type = self._value._data_type if isinstance(data, AssetBundleRequestOptions) else None
+        return self._wrap_cached("_data_cache", data, data_type)
 
     @property
     def HashCode(self) -> int:
@@ -257,7 +287,7 @@ class CompatResourceLocation(_CompatValue):
 
     @property
     def Type(self) -> object:
-        return wrap_legacy(self._value.type)
+        return self._wrap_cached("_type_cache", self._value.type)
 
 
 class CompatCatalog(_CompatValue):
@@ -307,12 +337,27 @@ class CompatCatalog(_CompatValue):
     def InternalIdPrefixes(self) -> list[str]:
         return self._value.internal_id_prefixes
 
-    @property
+    @cached_property
     def Resources(self) -> dict[object, list[object]]:
-        return {
-            wrap_legacy(key): [wrap_legacy(location) for location in locations]
-            for key, locations in self._value.resources.items()
-        }
+        """Return a cached resource snapshot with legacy keys and locations.
+
+        Delete this attribute to rebuild the dictionary on its next access.
+        Dictionary and list edits stay local to this compatibility snapshot;
+        location wrappers continue to read the underlying location's fields.
+        """
+        location_cache: dict[int, object] = {}
+        resources: dict[object, list[object]] = {}
+        for key, locations in self._value.resources.items():
+            wrapped_locations = []
+            for location in locations:
+                identity = id(location)
+                wrapped = location_cache.get(identity)
+                if wrapped is None:
+                    wrapped = wrap_legacy(location)
+                    location_cache[identity] = wrapped
+                wrapped_locations.append(wrapped)
+            resources[wrap_legacy(key)] = wrapped_locations
+        return resources
 
 
 def wrap_legacy(value: object) -> object:

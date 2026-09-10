@@ -71,11 +71,11 @@ manylinux build. Keep verification files outside the distribution upload directo
 ## Publish an approved release
 
 After review, tag the validated commit with its exact package version and push
-that tag. For the 1.1.0 candidate:
+that tag. For the 1.1.1 candidate:
 
 ```shell
-git tag v1.1.0 APPROVED_COMMIT
-git push origin v1.1.0
+git tag -a v1.1.1 APPROVED_COMMIT -m "Release 1.1.1"
+git push origin v1.1.1
 ```
 
 `publish.yml` rejects mismatched tags and calls the same reusable wheel-verification
@@ -85,4 +85,4 @@ uploads exactly that run's six verified distributions with OpenID Connect and
 PEP 740 attestations. It does not rebuild packages in the publication job.
 
 Preparing artifacts or pushing a verification branch does not publish to PyPI.
-The 1.1.0 candidate is unpublished until the approved tag workflow completes.
+The candidate is unpublished until the approved tag workflow completes.

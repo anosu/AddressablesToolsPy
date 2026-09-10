@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-09-10
+
+### Fixed
+
+- Cache the legacy `catalog.Resources` dictionary on first access so repeated
+  lookups inside a resource loop no longer rewrap the entire catalog (issue #1).
+  Dictionary/list edits now persist within that wrapper's snapshot; use
+  `del catalog.Resources` to rebuild it from the underlying resource mapping.
+- Reuse location wrappers for resource aliases and cache legacy dependency lists
+  and metadata wrappers to avoid repeated allocations during traversal. Dependency
+  list replacements refresh automatically; use `del location.Dependencies` after
+  in-place source-list edits. Metadata replacements refresh automatically, and
+  custom decoder lists/dictionaries retain their dynamic wrapping behavior.
+
 ## [1.1.0] - 2026-09-10
 
 ### Added
@@ -88,5 +102,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 [1.0.0]: https://github.com/anosu/AddressablesToolsPy/compare/3d0f3bb...v1.0.0
 [1.1.0]: https://github.com/anosu/AddressablesToolsPy/compare/v1.0.0...v1.1.0
+[1.1.1]: https://github.com/anosu/AddressablesToolsPy/compare/v1.1.0...v1.1.1
 [0.2.0]: https://github.com/anosu/AddressablesToolsPy/compare/0dbf25e...3d0f3bb
 [0.1.7]: https://github.com/anosu/AddressablesToolsPy/commits/0dbf25e

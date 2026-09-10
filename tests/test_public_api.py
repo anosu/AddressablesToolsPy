@@ -14,8 +14,8 @@ def test_new_package_exports_parse_functions() -> None:
     assert addressablestools.DecoderRegistry is DecoderRegistry
 
 
-def test_new_package_version_is_020() -> None:
-    assert addressablestools.__version__ == "1.1.0"
+def test_new_package_version() -> None:
+    assert addressablestools.__version__ == "1.1.1"
 
 
 def test_parse_dispatches_json_text(catalog_json_text: str) -> None:
